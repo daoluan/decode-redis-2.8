@@ -626,6 +626,7 @@ int incrementallyRehash(int dbid) {
  * for dict.c to resize the hash tables accordingly to the fact we have o not
  * running childs. */
 void updateDictResizePolicy(void) {
+    // 当没有后台数据备份进程时，允许进行哈希表的调整，为的是避免写时复制。
     if (server.rdb_child_pid == -1 && server.aof_child_pid == -1)
         dictEnableResize();
     else
@@ -974,7 +975,6 @@ void databasesCron(void) {
  * so in order to throttle execution of things we want to do less frequently
  * a macro is used: run_with_period(milliseconds) { .... }
  */
-
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
     REDIS_NOTUSED(eventLoop);
@@ -1052,6 +1052,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* Handle background operations on Redis databases. */
     databasesCron();
 
+    // 如果需要，触发 AOF
     /* Start a scheduled AOF rewrite if this was requested by the user while
      * a BGSAVE was in progress. */
     if (server.rdb_child_pid == -1 && server.aof_child_pid == -1 &&
@@ -1083,9 +1084,12 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                     "Warning, detected child with unmatched pid: %ld",
                     (long)pid);
             }
+
+            // 更新哈希表 resize 策略
             updateDictResizePolicy();
         }
     } else {
+        // 如果后台没有备份进程，按需启动 BGSAVE 或者 AOF
         /* If there is not a background saving/rewrite in progress check if
          * we have to save/rewrite now */
          for (j = 0; j < server.saveparamslen; j++) {
@@ -1267,6 +1271,7 @@ void createSharedObjects(void) {
     }
 }
 
+// 初始化 redis 服务器配置
 void initServerConfig() {
     // 初始化 N 多的选项
     int j;
@@ -1352,6 +1357,7 @@ void initServerConfig() {
 
     resetServerSaveParams();
 
+    // 设置数据库备份的条件
     appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
     appendServerSaveParams(300,100);  /* save after 5 minutes and 100 changes */
     appendServerSaveParams(60,10000); /* save after 1 minute and 10000 changes */
@@ -1401,6 +1407,7 @@ void initServerConfig() {
     // redis 命令准备
     populateCommandTable();
 
+    // redis 常用命令
     server.delCommand = lookupCommandByCString("del");
     server.multiCommand = lookupCommandByCString("multi");
     server.lpushCommand = lookupCommandByCString("lpush");

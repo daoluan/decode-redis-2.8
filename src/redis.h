@@ -358,6 +358,7 @@
  * specified period, specified in milliseconds.
  * The actual resolution depends on server.hz. */
 #define run_with_period(_ms_) if ((_ms_ <= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
+    // 小于 1000 个周期或者执行次数小于 (_ms_)/(1000/server.hz)
 
 /* We can print the stacktrace, so our assert is defined this way: */
 #define redisAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_redisAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),_exit(1)))
@@ -494,6 +495,7 @@ typedef struct redisClient {
     char buf[REDIS_REPLY_CHUNK_BYTES];
 } redisClient;
 
+// 触发数据库备份的条件
 struct saveparam {
     time_t seconds;
     int changes;
@@ -616,9 +618,10 @@ struct redisServer {
     off_t loading_loaded_bytes;
     time_t loading_start_time;
     off_t loading_process_events_interval_bytes;
+
+    // 常用命令
     /* Fast pointers to often looked up command */
-    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,
-                        *rpopCommand;
+    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,*rpopCommand;
 
     /* Fields used only for stats */
     time_t stat_starttime;          /* Server start time */

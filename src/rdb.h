@@ -44,7 +44,7 @@
  * keys requires a lot of space, so we check the most significant 2 bits of
  * the first byte to interpreter the length:
  *
- * 00|000000 => if the two MSB are 00 the len is the 6 bits of this byte
+ * 00|000000 => if the two MSB 最高有效位 are 00 the len is the 6 bits of this byte
  * 01|000000 00000000 =>  01, the len is 14 byes, 6 bits + 8 bits of next byte
  * 10|000000 [32 bit integer] => if it's 01, a full 32 bit len will follow
  * 11|000000 this means: specially encoded object will follow. The six bits
@@ -53,12 +53,15 @@
  *
  * Lengths up to 63 are stored using a single byte, most DB keys, and may
  * values, will fit inside. */
+
+ // 这些定义见上面的解释
 #define REDIS_RDB_6BITLEN 0
 #define REDIS_RDB_14BITLEN 1
 #define REDIS_RDB_32BITLEN 2
 #define REDIS_RDB_ENCVAL 3
 #define REDIS_RDB_LENERR UINT_MAX
 
+// 字符串的长度信息。
 /* When a length of a string object stored on disk has the first two bits
  * set, the remaining two bits specify a special encoding for the object
  * accordingly to the following defines: */
@@ -67,6 +70,7 @@
 #define REDIS_RDB_ENC_INT32 2       /* 32 bit signed integer */
 #define REDIS_RDB_ENC_LZF 3         /* string compressed with FASTLZ */
 
+// 普通数据结构类型
 /* Dup object types to RDB object types. Only reason is readability (are we
  * dealing with RDB types or with in-memory object types?). */
 #define REDIS_RDB_TYPE_STRING 0
@@ -75,6 +79,7 @@
 #define REDIS_RDB_TYPE_ZSET   3
 #define REDIS_RDB_TYPE_HASH   4
 
+// 加密数据结构的类型
 /* Object types for encoded objects. */
 #define REDIS_RDB_TYPE_HASH_ZIPMAP    9
 #define REDIS_RDB_TYPE_LIST_ZIPLIST  10
@@ -85,6 +90,7 @@
 /* Test if a type is an object type. */
 #define rdbIsObjectType(t) ((t >= 0 && t <= 4) || (t >= 9 && t <= 13))
 
+// RDB 的操作码，譬如到了存储的末尾，会添加 REDIS_RDB_OPCODE_EOF
 /* Special RDB opcodes (saved/loaded with rdbSaveType/rdbLoadType). */
 #define REDIS_RDB_OPCODE_EXPIRETIME_MS 252
 #define REDIS_RDB_OPCODE_EXPIRETIME 253

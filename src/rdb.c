@@ -267,16 +267,19 @@ err:
     return NULL;
 }
 
+// 长度 | 字符串数据
 /* Save a string object as [len][data] on disk. If the object is a string
  * representation of an integer value we try to save it in a special form */
 int rdbSaveRawString(rio *rdb, unsigned char *s, size_t len) {
     int enclen;
     int n, nwritten = 0;
 
+    // 尝试将他解析为一个整数
     /* Try integer encoding */
     if (len <= 11) {
         unsigned char buf[5];
         if ((enclen = rdbTryIntegerEncoding((char*)s,len,buf)) > 0) {
+            // 解析整数成功，直接写入整数，退出
             if (rdbWriteRaw(rdb,buf,enclen) == -1) return -1;
             return enclen;
         }
@@ -291,6 +294,7 @@ int rdbSaveRawString(rio *rdb, unsigned char *s, size_t len) {
         /* Return value of 0 means data can't be compressed, save the old way */
     }
 
+    // 逐项保存，长度，字符串数据
     /* Store verbatim */
     if ((n = rdbSaveLen(rdb,len)) == -1) return -1;
     nwritten += n;
@@ -346,7 +350,8 @@ robj *rdbGenericLoadStringObject(rio *rdb, int encode) {
         case REDIS_RDB_ENC_INT16:
         case REDIS_RDB_ENC_INT32:
             return rdbLoadIntegerObject(rdb,len,encode);
-            // 压缩
+
+        // 压缩
         case REDIS_RDB_ENC_LZF:
             return rdbLoadLzfStringObject(rdb);
         default:
@@ -675,19 +680,28 @@ int rdbSave(char *filename) {
             return REDIS_ERR;
         }
 
+        // 数据库操作码
         /* Write the SELECT DB opcode */
         if (rdbSaveType(&rdb,REDIS_RDB_OPCODE_SELECTDB) == -1) goto werr;
+
+        // 数据库序号
         if (rdbSaveLen(&rdb,j) == -1) goto werr;
 
         // 写入数据库中每一个数据项
         /* Iterate this DB writing every entry */
         while((de = dictNext(di)) != NULL) {
             sds keystr = dictGetKey(de);
-            robj key, *o = dictGetVal(de);
+            robj key,
+                *o = dictGetVal(de);
             long long expire;
 
+            // 将 keystr 封装在 robj 里
             initStaticStringObject(key,keystr);
+
+            // 获取过期时间
             expire = getExpire(db,&key);
+
+            // 开始写入磁盘
             if (rdbSaveKeyValuePair(&rdb,&key,o,expire,now) == -1) goto werr;
         }
         dictReleaseIterator(di);
@@ -733,6 +747,7 @@ werr:
     return REDIS_ERR;
 }
 
+// bgsaveCommand(),serverCron(),syncCommand(),updateSlavesWaitingBgsave() 会调用 rdbSaveBackground()
 int rdbSaveBackground(char *filename) {
     pid_t childpid;
     long long start;
@@ -754,10 +769,12 @@ int rdbSaveBackground(char *filename) {
         // 执行备份主程序
         retval = rdbSave(filename);
 
-        // 计算写时复制的空间
+        // 脏数据
         if (retval == REDIS_OK) {
+            // 获取脏数据大小
             size_t private_dirty = zmalloc_get_private_dirty();
 
+            // 记录脏数据
             if (private_dirty) {
                 redisLog(REDIS_NOTICE,
                     "RDB: %zu MB of memory used by copy-on-write",
@@ -765,10 +782,14 @@ int rdbSaveBackground(char *filename) {
             }
         }
 
+        // 退出子进程
         exitFromChild((retval == REDIS_OK) ? 0 : 1);
     } else {
         /* Parent */
+        // 计算 fork 消耗的时间
         server.stat_fork_time = ustime()-start;
+
+        // fork 出错
         if (childpid == -1) {
             server.lastbgsave_status = REDIS_ERR;
             redisLog(REDIS_WARNING,"Can't save in background: fork: %s",
@@ -776,7 +797,7 @@ int rdbSaveBackground(char *filename) {
             return REDIS_ERR;
         }
         redisLog(REDIS_NOTICE,"Background saving started by pid %d",childpid);
-        server.rdb_save_time_start = time(NULL);
+        server.rdb_save_time_start = time(NULL); // 保存的起始时间
         server.rdb_child_pid = childpid;
         updateDictResizePolicy();
         return REDIS_OK;
@@ -802,7 +823,7 @@ robj *rdbLoadObject(int rdbtype, rio *rdb) {
         /* Read string value */
         if ((o = rdbLoadEncodedStringObject(rdb)) == NULL) return NULL;
 
-        // 解码
+        // 尝试解码
         o = tryObjectEncoding(o);
     } else if (rdbtype == REDIS_RDB_TYPE_LIST) {
         /* Read list value */
@@ -1141,6 +1162,7 @@ int rdbLoad(char *filename) {
         // 数据类型
         /* Read type. */
         if ((type = rdbLoadType(&rdb)) == -1) goto eoferr;
+
         if (type == REDIS_RDB_OPCODE_EXPIRETIME) {
             if ((expiretime = rdbLoadTime(&rdb)) == -1) goto eoferr;
             /* We read the time so we need to read the object type again. */
@@ -1156,7 +1178,7 @@ int rdbLoad(char *filename) {
             if ((type = rdbLoadType(&rdb)) == -1) goto eoferr;
         }
 
-        // 已经读到了数据库的结尾
+        // 读到了数据库的结尾
         if (type == REDIS_RDB_OPCODE_EOF)
             break;
 
@@ -1249,6 +1271,8 @@ void backgroundSaveDoneHandler(int exitcode, int bysignal) {
             server.lastbgsave_status = REDIS_ERR;
     }
     server.rdb_child_pid = -1;
+
+    // 计算备份所用的时间
     server.rdb_save_time_last = time(NULL)-server.rdb_save_time_start;
     server.rdb_save_time_start = -1;
     /* Possibly there are slaves waiting for a BGSAVE in order to be served
@@ -1256,6 +1280,7 @@ void backgroundSaveDoneHandler(int exitcode, int bysignal) {
     updateSlavesWaitingBgsave(exitcode == 0 ? REDIS_OK : REDIS_ERR);
 }
 
+// 立即执行备份命令，非后台备份
 void saveCommand(redisClient *c) {
     if (server.rdb_child_pid != -1) {
         addReplyError(c,"Background save already in progress");
@@ -1268,6 +1293,7 @@ void saveCommand(redisClient *c) {
     }
 }
 
+// 后台备份命令
 void bgsaveCommand(redisClient *c) {
     if (server.rdb_child_pid != -1) {
         addReplyError(c,"Background save already in progress");

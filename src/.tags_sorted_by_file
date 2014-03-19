@@ -23,7 +23,6 @@ head	adlist.h	/^    listNode *head;$/;"	m	struct:list
 len	adlist.h	/^    unsigned long len;$/;"	m	struct:list
 list	adlist.h	/^typedef struct list {$/;"	s
 list	adlist.h	/^} list;$/;"	t	typeref:struct:list
-listFirst	adlist.h	60;"	d
 listGetDupMethod	adlist.h	70;"	d
 listGetFree	adlist.h	71;"	d
 listGetMatchMethod	adlist.h	72;"	d
@@ -471,33 +470,33 @@ dict_hash_function_seed	dict.c	/^static uint32_t dict_hash_function_seed = 5381;
 rev	dict.c	/^static unsigned long rev(unsigned long v) {$/;"	f	file:
 timeInMilliseconds	dict.c	/^long long timeInMilliseconds(void) {$/;"	f
 DICT_ERR	dict.h	42;"	d
-DICT_HT_INITIAL_SIZE	dict.h	105;"	d
+DICT_HT_INITIAL_SIZE	dict.h	106;"	d
 DICT_NOTUSED	dict.h	45;"	d
 DICT_OK	dict.h	41;"	d
 __DICT_H	dict.h	39;"	d
 d	dict.h	/^    dict *d;$/;"	m	struct:dictIterator
 dict	dict.h	/^typedef struct dict {$/;"	s
 dict	dict.h	/^} dict;$/;"	t	typeref:struct:dict
-dictCompareKeys	dict.h	136;"	d
+dictCompareKeys	dict.h	137;"	d
 dictEntry	dict.h	/^typedef struct dictEntry {$/;"	s
 dictEntry	dict.h	/^} dictEntry;$/;"	t	typeref:struct:dictEntry
-dictFreeKey	dict.h	125;"	d
-dictFreeVal	dict.h	108;"	d
-dictGetKey	dict.h	142;"	d
-dictGetSignedIntegerVal	dict.h	144;"	d
-dictGetUnsignedIntegerVal	dict.h	145;"	d
-dictGetVal	dict.h	143;"	d
-dictHashKey	dict.h	141;"	d
-dictIsRehashing	dict.h	148;"	d
+dictFreeKey	dict.h	126;"	d
+dictFreeVal	dict.h	109;"	d
+dictGetKey	dict.h	143;"	d
+dictGetSignedIntegerVal	dict.h	145;"	d
+dictGetUnsignedIntegerVal	dict.h	146;"	d
+dictGetVal	dict.h	144;"	d
+dictHashKey	dict.h	142;"	d
+dictIsRehashing	dict.h	149;"	d
 dictIterator	dict.h	/^typedef struct dictIterator {$/;"	s
 dictIterator	dict.h	/^} dictIterator;$/;"	t	typeref:struct:dictIterator
 dictScanFunction	dict.h	/^typedef void (dictScanFunction)(void *privdata, const dictEntry *de);$/;"	t
-dictSetKey	dict.h	129;"	d
-dictSetSignedIntegerVal	dict.h	119;"	d
-dictSetUnsignedIntegerVal	dict.h	122;"	d
-dictSetVal	dict.h	112;"	d
-dictSize	dict.h	147;"	d
-dictSlots	dict.h	146;"	d
+dictSetKey	dict.h	130;"	d
+dictSetSignedIntegerVal	dict.h	120;"	d
+dictSetUnsignedIntegerVal	dict.h	123;"	d
+dictSetVal	dict.h	113;"	d
+dictSize	dict.h	148;"	d
+dictSlots	dict.h	147;"	d
 dictType	dict.h	/^typedef struct dictType {$/;"	s
 dictType	dict.h	/^} dictType;$/;"	t	typeref:struct:dictType
 dictht	dict.h	/^typedef struct dictht {$/;"	s
@@ -747,8 +746,8 @@ zmalloc_size_sds	networking.c	/^size_t zmalloc_size_sds(sds s) {$/;"	f
 keyspaceEventsFlagsToString	notify.c	/^sds keyspaceEventsFlagsToString(int flags) {$/;"	f
 keyspaceEventsStringToFlags	notify.c	/^int keyspaceEventsStringToFlags(char *classes) {$/;"	f
 notifyKeyspaceEvent	notify.c	/^void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {$/;"	f
-REDIS_COMPARE_BINARY	object.c	364;"	d	file:
-REDIS_COMPARE_COLL	object.c	365;"	d	file:
+REDIS_COMPARE_BINARY	object.c	367;"	d	file:
+REDIS_COMPARE_COLL	object.c	368;"	d	file:
 checkType	object.c	/^int checkType(redisClient *c, robj *o, int type) {$/;"	f
 collateStringObjects	object.c	/^int collateStringObjects(robj *a, robj *b) {$/;"	f
 compareStringObjects	object.c	/^int compareStringObjects(robj *a, robj *b) {$/;"	f
@@ -881,32 +880,32 @@ rdbWriteRaw	rdb.c	/^static int rdbWriteRaw(rio *rdb, void *p, size_t len) {$/;"	
 saveCommand	rdb.c	/^void saveCommand(redisClient *c) {$/;"	f
 startLoading	rdb.c	/^void startLoading(FILE *fp) {$/;"	f
 stopLoading	rdb.c	/^void stopLoading(void) {$/;"	f
-REDIS_RDB_14BITLEN	rdb.h	57;"	d
-REDIS_RDB_32BITLEN	rdb.h	58;"	d
-REDIS_RDB_6BITLEN	rdb.h	56;"	d
-REDIS_RDB_ENCVAL	rdb.h	59;"	d
-REDIS_RDB_ENC_INT16	rdb.h	66;"	d
-REDIS_RDB_ENC_INT32	rdb.h	67;"	d
-REDIS_RDB_ENC_INT8	rdb.h	65;"	d
-REDIS_RDB_ENC_LZF	rdb.h	68;"	d
-REDIS_RDB_LENERR	rdb.h	60;"	d
-REDIS_RDB_OPCODE_EOF	rdb.h	92;"	d
-REDIS_RDB_OPCODE_EXPIRETIME	rdb.h	90;"	d
-REDIS_RDB_OPCODE_EXPIRETIME_MS	rdb.h	89;"	d
-REDIS_RDB_OPCODE_SELECTDB	rdb.h	91;"	d
-REDIS_RDB_TYPE_HASH	rdb.h	76;"	d
-REDIS_RDB_TYPE_HASH_ZIPLIST	rdb.h	83;"	d
-REDIS_RDB_TYPE_HASH_ZIPMAP	rdb.h	79;"	d
-REDIS_RDB_TYPE_LIST	rdb.h	73;"	d
-REDIS_RDB_TYPE_LIST_ZIPLIST	rdb.h	80;"	d
-REDIS_RDB_TYPE_SET	rdb.h	74;"	d
-REDIS_RDB_TYPE_SET_INTSET	rdb.h	81;"	d
-REDIS_RDB_TYPE_STRING	rdb.h	72;"	d
-REDIS_RDB_TYPE_ZSET	rdb.h	75;"	d
-REDIS_RDB_TYPE_ZSET_ZIPLIST	rdb.h	82;"	d
+REDIS_RDB_14BITLEN	rdb.h	59;"	d
+REDIS_RDB_32BITLEN	rdb.h	60;"	d
+REDIS_RDB_6BITLEN	rdb.h	58;"	d
+REDIS_RDB_ENCVAL	rdb.h	61;"	d
+REDIS_RDB_ENC_INT16	rdb.h	69;"	d
+REDIS_RDB_ENC_INT32	rdb.h	70;"	d
+REDIS_RDB_ENC_INT8	rdb.h	68;"	d
+REDIS_RDB_ENC_LZF	rdb.h	71;"	d
+REDIS_RDB_LENERR	rdb.h	62;"	d
+REDIS_RDB_OPCODE_EOF	rdb.h	98;"	d
+REDIS_RDB_OPCODE_EXPIRETIME	rdb.h	96;"	d
+REDIS_RDB_OPCODE_EXPIRETIME_MS	rdb.h	95;"	d
+REDIS_RDB_OPCODE_SELECTDB	rdb.h	97;"	d
+REDIS_RDB_TYPE_HASH	rdb.h	80;"	d
+REDIS_RDB_TYPE_HASH_ZIPLIST	rdb.h	88;"	d
+REDIS_RDB_TYPE_HASH_ZIPMAP	rdb.h	84;"	d
+REDIS_RDB_TYPE_LIST	rdb.h	77;"	d
+REDIS_RDB_TYPE_LIST_ZIPLIST	rdb.h	85;"	d
+REDIS_RDB_TYPE_SET	rdb.h	78;"	d
+REDIS_RDB_TYPE_SET_INTSET	rdb.h	86;"	d
+REDIS_RDB_TYPE_STRING	rdb.h	76;"	d
+REDIS_RDB_TYPE_ZSET	rdb.h	79;"	d
+REDIS_RDB_TYPE_ZSET_ZIPLIST	rdb.h	87;"	d
 REDIS_RDB_VERSION	rdb.h	41;"	d
 __REDIS_RDB_H	rdb.h	31;"	d
-rdbIsObjectType	rdb.h	86;"	d
+rdbIsObjectType	rdb.h	91;"	d
 RANDPTR_INITIAL_SIZE	redis-benchmark.c	50;"	d	file:
 REDIS_NOTUSED	redis-benchmark.c	49;"	d	file:
 _client	redis-benchmark.c	/^typedef struct _client {$/;"	s	file:
@@ -1237,50 +1236,50 @@ ACTIVE_EXPIRE_CYCLE_FAST_DURATION	redis.h	127;"	d
 ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP	redis.h	126;"	d
 ACTIVE_EXPIRE_CYCLE_SLOW	redis.h	129;"	d
 ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC	redis.h	128;"	d
-AOF_FSYNC_ALWAYS	redis.h	291;"	d
-AOF_FSYNC_EVERYSEC	redis.h	292;"	d
-AOF_FSYNC_NO	redis.h	290;"	d
+AOF_FSYNC_ALWAYS	redis.h	292;"	d
+AOF_FSYNC_EVERYSEC	redis.h	293;"	d
+AOF_FSYNC_NO	redis.h	291;"	d
 REDIS_AOF_AUTOSYNC_BYTES	redis.h	139;"	d
-REDIS_AOF_OFF	redis.h	210;"	d
-REDIS_AOF_ON	redis.h	211;"	d
+REDIS_AOF_OFF	redis.h	211;"	d
+REDIS_AOF_ON	redis.h	212;"	d
 REDIS_AOF_REWRITE_ITEMS_PER_CMD	redis.h	85;"	d
 REDIS_AOF_REWRITE_MIN_SIZE	redis.h	84;"	d
 REDIS_AOF_REWRITE_PERC	redis.h	83;"	d
-REDIS_AOF_WAIT_REWRITE	redis.h	212;"	d
-REDIS_ASKING	redis.h	225;"	d
+REDIS_AOF_WAIT_REWRITE	redis.h	213;"	d
+REDIS_ASKING	redis.h	226;"	d
 REDIS_AUTHPASS_MAX_LEN	redis.h	89;"	d
 REDIS_BGSAVE_RETRY_DELAY	redis.h	98;"	d
 REDIS_BINDADDR_MAX	redis.h	124;"	d
-REDIS_BLOCKED	redis.h	219;"	d
-REDIS_CALL_FULL	redis.h	335;"	d
-REDIS_CALL_NONE	redis.h	331;"	d
-REDIS_CALL_PROPAGATE	redis.h	334;"	d
-REDIS_CALL_SLOWLOG	redis.h	332;"	d
-REDIS_CALL_STATS	redis.h	333;"	d
-REDIS_CLIENT_LIMIT_CLASS_NORMAL	redis.h	240;"	d
-REDIS_CLIENT_LIMIT_CLASS_PUBSUB	redis.h	242;"	d
-REDIS_CLIENT_LIMIT_CLASS_SLAVE	redis.h	241;"	d
-REDIS_CLIENT_LIMIT_NUM_CLASSES	redis.h	243;"	d
-REDIS_CLOSE_AFTER_REPLY	redis.h	221;"	d
-REDIS_CLOSE_ASAP	redis.h	226;"	d
-REDIS_CMD_ADMIN	redis.h	154;"	d
-REDIS_CMD_DENYOOM	redis.h	152;"	d
-REDIS_CMD_LOADING	redis.h	159;"	d
-REDIS_CMD_NOSCRIPT	redis.h	156;"	d
-REDIS_CMD_NOT_USED_1	redis.h	153;"	d
-REDIS_CMD_PUBSUB	redis.h	155;"	d
-REDIS_CMD_RANDOM	redis.h	157;"	d
-REDIS_CMD_READONLY	redis.h	151;"	d
-REDIS_CMD_SKIP_MONITOR	redis.h	161;"	d
-REDIS_CMD_SORT_FOR_SCRIPT	redis.h	158;"	d
-REDIS_CMD_STALE	redis.h	160;"	d
-REDIS_CMD_WRITE	redis.h	150;"	d
+REDIS_BLOCKED	redis.h	220;"	d
+REDIS_CALL_FULL	redis.h	336;"	d
+REDIS_CALL_NONE	redis.h	332;"	d
+REDIS_CALL_PROPAGATE	redis.h	335;"	d
+REDIS_CALL_SLOWLOG	redis.h	333;"	d
+REDIS_CALL_STATS	redis.h	334;"	d
+REDIS_CLIENT_LIMIT_CLASS_NORMAL	redis.h	241;"	d
+REDIS_CLIENT_LIMIT_CLASS_PUBSUB	redis.h	243;"	d
+REDIS_CLIENT_LIMIT_CLASS_SLAVE	redis.h	242;"	d
+REDIS_CLIENT_LIMIT_NUM_CLASSES	redis.h	244;"	d
+REDIS_CLOSE_AFTER_REPLY	redis.h	222;"	d
+REDIS_CLOSE_ASAP	redis.h	227;"	d
+REDIS_CMD_ADMIN	redis.h	155;"	d
+REDIS_CMD_DENYOOM	redis.h	153;"	d
+REDIS_CMD_LOADING	redis.h	160;"	d
+REDIS_CMD_NOSCRIPT	redis.h	157;"	d
+REDIS_CMD_NOT_USED_1	redis.h	154;"	d
+REDIS_CMD_PUBSUB	redis.h	156;"	d
+REDIS_CMD_RANDOM	redis.h	158;"	d
+REDIS_CMD_READONLY	redis.h	152;"	d
+REDIS_CMD_SKIP_MONITOR	redis.h	162;"	d
+REDIS_CMD_SORT_FOR_SCRIPT	redis.h	159;"	d
+REDIS_CMD_STALE	redis.h	161;"	d
+REDIS_CMD_WRITE	redis.h	151;"	d
 REDIS_CONFIGLINE_MAX	redis.h	76;"	d
 REDIS_DBCRON_DBS_PER_CALL	redis.h	77;"	d
-REDIS_DEBUG	redis.h	276;"	d
+REDIS_DEBUG	redis.h	277;"	d
 REDIS_DEFAULT_ACTIVE_REHASHING	redis.h	118;"	d
 REDIS_DEFAULT_AOF_FILENAME	redis.h	116;"	d
-REDIS_DEFAULT_AOF_FSYNC	redis.h	293;"	d
+REDIS_DEFAULT_AOF_FSYNC	redis.h	294;"	d
 REDIS_DEFAULT_AOF_NO_FSYNC_ON_REWRITE	redis.h	117;"	d
 REDIS_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC	redis.h	119;"	d
 REDIS_DEFAULT_CLUSTER_CONFIG_FILE	redis.h	101;"	d
@@ -1289,7 +1288,7 @@ REDIS_DEFAULT_DBNUM	redis.h	75;"	d
 REDIS_DEFAULT_HZ	redis.h	70;"	d
 REDIS_DEFAULT_LOGFILE	redis.h	105;"	d
 REDIS_DEFAULT_MAXMEMORY	redis.h	114;"	d
-REDIS_DEFAULT_MAXMEMORY_POLICY	redis.h	316;"	d
+REDIS_DEFAULT_MAXMEMORY_POLICY	redis.h	317;"	d
 REDIS_DEFAULT_MAXMEMORY_SAMPLES	redis.h	115;"	d
 REDIS_DEFAULT_MIN_SLAVES_MAX_LAG	redis.h	121;"	d
 REDIS_DEFAULT_MIN_SLAVES_TO_WRITE	redis.h	120;"	d
@@ -1308,51 +1307,51 @@ REDIS_DEFAULT_SYSLOG_ENABLED	redis.h	106;"	d
 REDIS_DEFAULT_SYSLOG_IDENT	redis.h	100;"	d
 REDIS_DEFAULT_TCP_KEEPALIVE	redis.h	104;"	d
 REDIS_DEFAULT_UNIX_SOCKET_PERM	redis.h	103;"	d
-REDIS_DEFAULT_VERBOSITY	redis.h	281;"	d
-REDIS_DIRTY_CAS	redis.h	220;"	d
-REDIS_DIRTY_EXEC	redis.h	228;"	d
-REDIS_ENCODING_HT	redis.h	175;"	d
-REDIS_ENCODING_INT	redis.h	174;"	d
-REDIS_ENCODING_INTSET	redis.h	179;"	d
-REDIS_ENCODING_LINKEDLIST	redis.h	177;"	d
-REDIS_ENCODING_RAW	redis.h	173;"	d
-REDIS_ENCODING_SKIPLIST	redis.h	180;"	d
-REDIS_ENCODING_ZIPLIST	redis.h	178;"	d
-REDIS_ENCODING_ZIPMAP	redis.h	176;"	d
+REDIS_DEFAULT_VERBOSITY	redis.h	282;"	d
+REDIS_DIRTY_CAS	redis.h	221;"	d
+REDIS_DIRTY_EXEC	redis.h	229;"	d
+REDIS_ENCODING_HT	redis.h	176;"	d
+REDIS_ENCODING_INT	redis.h	175;"	d
+REDIS_ENCODING_INTSET	redis.h	180;"	d
+REDIS_ENCODING_LINKEDLIST	redis.h	178;"	d
+REDIS_ENCODING_RAW	redis.h	174;"	d
+REDIS_ENCODING_SKIPLIST	redis.h	181;"	d
+REDIS_ENCODING_ZIPLIST	redis.h	179;"	d
+REDIS_ENCODING_ZIPMAP	redis.h	177;"	d
 REDIS_ERR	redis.h	67;"	d
-REDIS_EVENTLOOP_FDSET_INCR	redis.h	143;"	d
-REDIS_FORCE_AOF	redis.h	230;"	d
-REDIS_FORCE_REPL	redis.h	231;"	d
-REDIS_GETKEYS_ALL	redis.h	1189;"	d
-REDIS_GETKEYS_PRELOAD	redis.h	1190;"	d
-REDIS_HASH	redis.h	168;"	d
-REDIS_HASH_KEY	redis.h	868;"	d
-REDIS_HASH_MAX_ZIPLIST_ENTRIES	redis.h	296;"	d
-REDIS_HASH_MAX_ZIPLIST_VALUE	redis.h	297;"	d
-REDIS_HASH_VALUE	redis.h	869;"	d
-REDIS_HEAD	redis.h	266;"	d
-REDIS_HT_MINFILL	redis.h	146;"	d
+REDIS_EVENTLOOP_FDSET_INCR	redis.h	144;"	d
+REDIS_FORCE_AOF	redis.h	231;"	d
+REDIS_FORCE_REPL	redis.h	232;"	d
+REDIS_GETKEYS_ALL	redis.h	1214;"	d
+REDIS_GETKEYS_PRELOAD	redis.h	1215;"	d
+REDIS_HASH	redis.h	169;"	d
+REDIS_HASH_KEY	redis.h	893;"	d
+REDIS_HASH_MAX_ZIPLIST_ENTRIES	redis.h	297;"	d
+REDIS_HASH_MAX_ZIPLIST_VALUE	redis.h	298;"	d
+REDIS_HASH_VALUE	redis.h	894;"	d
+REDIS_HEAD	redis.h	267;"	d
+REDIS_HT_MINFILL	redis.h	147;"	d
 REDIS_INLINE_MAX_SIZE	redis.h	136;"	d
 REDIS_IOBUF_LEN	redis.h	134;"	d
 REDIS_IP_STR_LEN	redis.h	122;"	d
-REDIS_LIST	redis.h	165;"	d
-REDIS_LIST_MAX_ZIPLIST_ENTRIES	redis.h	298;"	d
-REDIS_LIST_MAX_ZIPLIST_VALUE	redis.h	299;"	d
-REDIS_LOG_RAW	redis.h	280;"	d
+REDIS_LIST	redis.h	166;"	d
+REDIS_LIST_MAX_ZIPLIST_ENTRIES	redis.h	299;"	d
+REDIS_LIST_MAX_ZIPLIST_VALUE	redis.h	300;"	d
+REDIS_LOG_RAW	redis.h	281;"	d
 REDIS_LONGSTR_SIZE	redis.h	138;"	d
-REDIS_LRU_CLOCK_MAX	redis.h	373;"	d
-REDIS_LRU_CLOCK_RESOLUTION	redis.h	374;"	d
-REDIS_LUA_CLIENT	redis.h	224;"	d
-REDIS_LUA_TIME_LIMIT	redis.h	319;"	d
-REDIS_MASTER	redis.h	216;"	d
-REDIS_MASTER_FORCE_REPLY	redis.h	229;"	d
+REDIS_LRU_CLOCK_MAX	redis.h	375;"	d
+REDIS_LRU_CLOCK_RESOLUTION	redis.h	376;"	d
+REDIS_LUA_CLIENT	redis.h	225;"	d
+REDIS_LUA_TIME_LIMIT	redis.h	320;"	d
+REDIS_MASTER	redis.h	217;"	d
+REDIS_MASTER_FORCE_REPLY	redis.h	230;"	d
 REDIS_MAXIDLETIME	redis.h	74;"	d
-REDIS_MAXMEMORY_ALLKEYS_LRU	redis.h	313;"	d
-REDIS_MAXMEMORY_ALLKEYS_RANDOM	redis.h	314;"	d
-REDIS_MAXMEMORY_NO_EVICTION	redis.h	315;"	d
-REDIS_MAXMEMORY_VOLATILE_LRU	redis.h	310;"	d
-REDIS_MAXMEMORY_VOLATILE_RANDOM	redis.h	312;"	d
-REDIS_MAXMEMORY_VOLATILE_TTL	redis.h	311;"	d
+REDIS_MAXMEMORY_ALLKEYS_LRU	redis.h	314;"	d
+REDIS_MAXMEMORY_ALLKEYS_RANDOM	redis.h	315;"	d
+REDIS_MAXMEMORY_NO_EVICTION	redis.h	316;"	d
+REDIS_MAXMEMORY_VOLATILE_LRU	redis.h	311;"	d
+REDIS_MAXMEMORY_VOLATILE_RANDOM	redis.h	313;"	d
+REDIS_MAXMEMORY_VOLATILE_TTL	redis.h	312;"	d
 REDIS_MAX_CLIENTS	redis.h	88;"	d
 REDIS_MAX_HZ	redis.h	72;"	d
 REDIS_MAX_LOGMSG_LEN	redis.h	82;"	d
@@ -1360,86 +1359,86 @@ REDIS_MAX_QUERYBUF_LEN	redis.h	133;"	d
 REDIS_MAX_WRITE_PER_EVENT	redis.h	78;"	d
 REDIS_MBULK_BIG_ARG	redis.h	137;"	d
 REDIS_MIN_HZ	redis.h	71;"	d
-REDIS_MONITOR	redis.h	217;"	d
-REDIS_MULTI	redis.h	218;"	d
-REDIS_NOTICE	redis.h	278;"	d
-REDIS_NOTIFY_ALL	redis.h	354;"	d
-REDIS_NOTIFY_EVICTED	redis.h	353;"	d
-REDIS_NOTIFY_EXPIRED	redis.h	352;"	d
-REDIS_NOTIFY_GENERIC	redis.h	346;"	d
-REDIS_NOTIFY_HASH	redis.h	350;"	d
-REDIS_NOTIFY_KEYEVENT	redis.h	345;"	d
-REDIS_NOTIFY_KEYSPACE	redis.h	344;"	d
-REDIS_NOTIFY_LIST	redis.h	348;"	d
-REDIS_NOTIFY_SET	redis.h	349;"	d
-REDIS_NOTIFY_STRING	redis.h	347;"	d
-REDIS_NOTIFY_ZSET	redis.h	351;"	d
-REDIS_NOTUSED	redis.h	284;"	d
+REDIS_MONITOR	redis.h	218;"	d
+REDIS_MULTI	redis.h	219;"	d
+REDIS_NOTICE	redis.h	279;"	d
+REDIS_NOTIFY_ALL	redis.h	355;"	d
+REDIS_NOTIFY_EVICTED	redis.h	354;"	d
+REDIS_NOTIFY_EXPIRED	redis.h	353;"	d
+REDIS_NOTIFY_GENERIC	redis.h	347;"	d
+REDIS_NOTIFY_HASH	redis.h	351;"	d
+REDIS_NOTIFY_KEYEVENT	redis.h	346;"	d
+REDIS_NOTIFY_KEYSPACE	redis.h	345;"	d
+REDIS_NOTIFY_LIST	redis.h	349;"	d
+REDIS_NOTIFY_SET	redis.h	350;"	d
+REDIS_NOTIFY_STRING	redis.h	348;"	d
+REDIS_NOTIFY_ZSET	redis.h	352;"	d
+REDIS_NOTUSED	redis.h	285;"	d
 REDIS_OK	redis.h	66;"	d
 REDIS_OPS_SEC_SAMPLES	redis.h	94;"	d
-REDIS_OP_DIFF	redis.h	306;"	d
-REDIS_OP_INTER	redis.h	307;"	d
-REDIS_OP_UNION	redis.h	305;"	d
+REDIS_OP_DIFF	redis.h	307;"	d
+REDIS_OP_INTER	redis.h	308;"	d
+REDIS_OP_UNION	redis.h	306;"	d
 REDIS_PEER_ID_LEN	redis.h	123;"	d
-REDIS_PRE_PSYNC_SLAVE	redis.h	232;"	d
-REDIS_PROPAGATE_AOF	redis.h	339;"	d
-REDIS_PROPAGATE_NONE	redis.h	338;"	d
-REDIS_PROPAGATE_REPL	redis.h	340;"	d
-REDIS_RDB_14BITLEN	redis.h	196;"	d
-REDIS_RDB_32BITLEN	redis.h	197;"	d
-REDIS_RDB_6BITLEN	redis.h	195;"	d
-REDIS_RDB_ENCVAL	redis.h	198;"	d
-REDIS_RDB_ENC_INT16	redis.h	205;"	d
-REDIS_RDB_ENC_INT32	redis.h	206;"	d
-REDIS_RDB_ENC_INT8	redis.h	204;"	d
-REDIS_RDB_ENC_LZF	redis.h	207;"	d
-REDIS_RDB_LENERR	redis.h	199;"	d
+REDIS_PRE_PSYNC_SLAVE	redis.h	233;"	d
+REDIS_PROPAGATE_AOF	redis.h	340;"	d
+REDIS_PROPAGATE_NONE	redis.h	339;"	d
+REDIS_PROPAGATE_REPL	redis.h	341;"	d
+REDIS_RDB_14BITLEN	redis.h	197;"	d
+REDIS_RDB_32BITLEN	redis.h	198;"	d
+REDIS_RDB_6BITLEN	redis.h	196;"	d
+REDIS_RDB_ENCVAL	redis.h	199;"	d
+REDIS_RDB_ENC_INT16	redis.h	206;"	d
+REDIS_RDB_ENC_INT32	redis.h	207;"	d
+REDIS_RDB_ENC_INT8	redis.h	205;"	d
+REDIS_RDB_ENC_LZF	redis.h	208;"	d
+REDIS_RDB_LENERR	redis.h	200;"	d
 REDIS_REPLY_CHUNK_BYTES	redis.h	135;"	d
 REDIS_REPL_BACKLOG_MIN_SIZE	redis.h	97;"	d
-REDIS_REPL_CONNECT	redis.h	247;"	d
-REDIS_REPL_CONNECTED	redis.h	251;"	d
-REDIS_REPL_CONNECTING	redis.h	248;"	d
-REDIS_REPL_NONE	redis.h	246;"	d
-REDIS_REPL_ONLINE	redis.h	260;"	d
+REDIS_REPL_CONNECT	redis.h	248;"	d
+REDIS_REPL_CONNECTED	redis.h	252;"	d
+REDIS_REPL_CONNECTING	redis.h	249;"	d
+REDIS_REPL_NONE	redis.h	247;"	d
+REDIS_REPL_ONLINE	redis.h	261;"	d
 REDIS_REPL_PING_SLAVE_PERIOD	redis.h	92;"	d
-REDIS_REPL_RECEIVE_PONG	redis.h	249;"	d
-REDIS_REPL_SEND_BULK	redis.h	259;"	d
-REDIS_REPL_SYNCIO_TIMEOUT	redis.h	263;"	d
+REDIS_REPL_RECEIVE_PONG	redis.h	250;"	d
+REDIS_REPL_SEND_BULK	redis.h	260;"	d
+REDIS_REPL_SYNCIO_TIMEOUT	redis.h	264;"	d
 REDIS_REPL_TIMEOUT	redis.h	91;"	d
-REDIS_REPL_TRANSFER	redis.h	250;"	d
-REDIS_REPL_WAIT_BGSAVE_END	redis.h	258;"	d
-REDIS_REPL_WAIT_BGSAVE_START	redis.h	257;"	d
-REDIS_REQ_INLINE	redis.h	235;"	d
-REDIS_REQ_MULTIBULK	redis.h	236;"	d
+REDIS_REPL_TRANSFER	redis.h	251;"	d
+REDIS_REPL_WAIT_BGSAVE_END	redis.h	259;"	d
+REDIS_REPL_WAIT_BGSAVE_START	redis.h	258;"	d
+REDIS_REQ_INLINE	redis.h	236;"	d
+REDIS_REQ_MULTIBULK	redis.h	237;"	d
 REDIS_RUN_ID_SIZE	redis.h	93;"	d
 REDIS_SERVERPORT	redis.h	73;"	d
-REDIS_SET	redis.h	166;"	d
-REDIS_SET_MAX_INTSET_ENTRIES	redis.h	300;"	d
+REDIS_SET	redis.h	167;"	d
+REDIS_SET_MAX_INTSET_ENTRIES	redis.h	301;"	d
 REDIS_SHARED_BULKHDR_LEN	redis.h	81;"	d
 REDIS_SHARED_INTEGERS	redis.h	80;"	d
 REDIS_SHARED_SELECT_CMDS	redis.h	79;"	d
-REDIS_SHUTDOWN_NOSAVE	redis.h	328;"	d
-REDIS_SHUTDOWN_SAVE	redis.h	326;"	d
-REDIS_SLAVE	redis.h	215;"	d
+REDIS_SHUTDOWN_NOSAVE	redis.h	329;"	d
+REDIS_SHUTDOWN_SAVE	redis.h	327;"	d
+REDIS_SLAVE	redis.h	216;"	d
 REDIS_SLOWLOG_LOG_SLOWER_THAN	redis.h	86;"	d
 REDIS_SLOWLOG_MAX_LEN	redis.h	87;"	d
-REDIS_SORTKEY_MAX	redis.h	273;"	d
-REDIS_SORT_ASC	redis.h	271;"	d
-REDIS_SORT_DESC	redis.h	272;"	d
-REDIS_SORT_GET	redis.h	270;"	d
-REDIS_STRING	redis.h	164;"	d
-REDIS_TAIL	redis.h	267;"	d
-REDIS_UNBLOCKED	redis.h	222;"	d
-REDIS_UNIX_SOCKET	redis.h	227;"	d
-REDIS_VERBOSE	redis.h	277;"	d
-REDIS_WARNING	redis.h	279;"	d
-REDIS_ZSET	redis.h	167;"	d
-REDIS_ZSET_MAX_ZIPLIST_ENTRIES	redis.h	301;"	d
-REDIS_ZSET_MAX_ZIPLIST_VALUE	redis.h	302;"	d
-UNIT_MILLISECONDS	redis.h	323;"	d
-UNIT_SECONDS	redis.h	322;"	d
-ZSKIPLIST_MAXLEVEL	redis.h	286;"	d
-ZSKIPLIST_P	redis.h	287;"	d
+REDIS_SORTKEY_MAX	redis.h	274;"	d
+REDIS_SORT_ASC	redis.h	272;"	d
+REDIS_SORT_DESC	redis.h	273;"	d
+REDIS_SORT_GET	redis.h	271;"	d
+REDIS_STRING	redis.h	165;"	d
+REDIS_TAIL	redis.h	268;"	d
+REDIS_UNBLOCKED	redis.h	223;"	d
+REDIS_UNIX_SOCKET	redis.h	228;"	d
+REDIS_VERBOSE	redis.h	278;"	d
+REDIS_WARNING	redis.h	280;"	d
+REDIS_ZSET	redis.h	168;"	d
+REDIS_ZSET_MAX_ZIPLIST_ENTRIES	redis.h	302;"	d
+REDIS_ZSET_MAX_ZIPLIST_VALUE	redis.h	303;"	d
+UNIT_MILLISECONDS	redis.h	324;"	d
+UNIT_SECONDS	redis.h	323;"	d
+ZSKIPLIST_MAXLEVEL	redis.h	287;"	d
+ZSKIPLIST_P	redis.h	288;"	d
 __REDIS_H	redis.h	31;"	d
 _redisSortObject	redis.h	/^typedef struct _redisSortObject {$/;"	s
 _redisSortOperation	redis.h	/^typedef struct _redisSortOperation {$/;"	s
@@ -1528,7 +1527,7 @@ dbid	redis.h	/^    int argc, dbid, target;$/;"	m	struct:redisOp
 dbnum	redis.h	/^    int dbnum;                      \/* Total number of configured DBs *\/$/;"	m	struct:redisServer
 de	redis.h	/^    dictEntry *de;$/;"	m	struct:__anon11
 del	redis.h	/^    *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *del, *rpop, *lpop,$/;"	m	struct:sharedObjectsStruct
-delCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,$/;"	m	struct:redisServer	typeref:struct:redisServer::redisCommand
+delCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,*rpopCommand;$/;"	m	struct:redisServer	typeref:struct:redisServer::redisCommand
 di	redis.h	/^    dictIterator *di;$/;"	m	struct:__anon10
 di	redis.h	/^    dictIterator *di;$/;"	m	struct:__anon11
 dict	redis.h	/^    dict *dict;                 \/* The keyspace for this DB *\/$/;"	m	struct:redisDb
@@ -1563,7 +1562,7 @@ header	redis.h	/^    struct zskiplistNode *header, *tail;$/;"	m	struct:zskiplist
 hz	redis.h	/^    int hz;                     \/* serverCron() calls frequency in hertz *\/$/;"	m	struct:redisServer
 id	redis.h	/^    int id;$/;"	m	struct:redisDb
 ii	redis.h	/^    int ii; \/* intset iterator *\/$/;"	m	struct:__anon10
-initStaticStringObject	redis.h	389;"	d
+initStaticStringObject	redis.h	392;"	d
 integers	redis.h	/^    *integers[REDIS_SHARED_INTEGERS],$/;"	m	struct:sharedObjectsStruct
 ipfd	redis.h	/^    int ipfd[REDIS_BINDADDR_MAX]; \/* TCP socket file descriptors *\/$/;"	m	struct:redisServer
 ipfd_count	redis.h	/^    int ipfd_count;             \/* Used slots in ipfd[] *\/$/;"	m	struct:redisServer
@@ -1594,9 +1593,9 @@ loading_total_bytes	redis.h	/^    off_t loading_total_bytes;$/;"	m	struct:redisS
 loadingerr	redis.h	/^    *outofrangeerr, *noscripterr, *loadingerr, *slowscripterr, *bgsaveerr,$/;"	m	struct:sharedObjectsStruct
 logfile	redis.h	/^    char *logfile;                  \/* Path of log file *\/$/;"	m	struct:redisServer
 lpop	redis.h	/^    *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *del, *rpop, *lpop,$/;"	m	struct:sharedObjectsStruct
-lpopCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,$/;"	m	struct:redisServer	typeref:struct:redisServer::
+lpopCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,*rpopCommand;$/;"	m	struct:redisServer	typeref:struct:redisServer::
 lpush	redis.h	/^    *lpush, *emptyscan,$/;"	m	struct:sharedObjectsStruct
-lpushCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,$/;"	m	struct:redisServer	typeref:struct:redisServer::
+lpushCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,*rpopCommand;$/;"	m	struct:redisServer	typeref:struct:redisServer::
 lru	redis.h	/^    unsigned lru:22;        \/* lru time (relative to server.lruclock) *\/$/;"	m	struct:redisObject
 lruclock	redis.h	/^    unsigned lruclock:22;       \/* Clock incrementing every minute, for LRU *\/$/;"	m	struct:redisServer
 lruclock_padding	redis.h	/^    unsigned lruclock_padding:10;$/;"	m	struct:redisServer
@@ -1635,7 +1634,7 @@ mstate	redis.h	/^    multiState mstate;      \/* MULTI\/EXEC state *\/$/;"	m	str
 mstime	redis.h	/^    long long mstime;       \/* Like 'unixtime' but with milliseconds resolution. *\/$/;"	m	struct:redisServer
 multiCmd	redis.h	/^typedef struct multiCmd {$/;"	s
 multiCmd	redis.h	/^} multiCmd;$/;"	t	typeref:struct:multiCmd
-multiCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,$/;"	m	struct:redisServer	typeref:struct:redisServer::
+multiCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,*rpopCommand;$/;"	m	struct:redisServer	typeref:struct:redisServer::
 multiState	redis.h	/^typedef struct multiState {$/;"	s
 multiState	redis.h	/^} multiState;$/;"	t	typeref:struct:multiState
 multibulklen	redis.h	/^    int multibulklen;       \/* number of multi bulk arguments left to read *\/$/;"	m	struct:redisClient
@@ -1695,16 +1694,16 @@ readyList	redis.h	/^typedef struct readyList {$/;"	s
 readyList	redis.h	/^} readyList;$/;"	t	typeref:struct:readyList
 ready_keys	redis.h	/^    dict *ready_keys;           \/* Blocked keys that received a PUSH *\/$/;"	m	struct:redisDb
 ready_keys	redis.h	/^    list *ready_keys;        \/* List of readyList structures for BLPOP & co *\/$/;"	m	struct:redisServer
-redisAssert	redis.h	363;"	d
-redisAssertWithInfo	redis.h	362;"	d
+redisAssert	redis.h	365;"	d
+redisAssertWithInfo	redis.h	364;"	d
 redisClient	redis.h	/^typedef struct redisClient {$/;"	s
 redisClient	redis.h	/^} redisClient;$/;"	t	typeref:struct:redisClient
 redisCommand	redis.h	/^struct redisCommand {$/;"	s
 redisCommandProc	redis.h	/^typedef void redisCommandProc(redisClient *c);$/;"	t
 redisDb	redis.h	/^typedef struct redisDb {$/;"	s
 redisDb	redis.h	/^} redisDb;$/;"	t	typeref:struct:redisDb
-redisDebug	redis.h	1374;"	d
-redisDebugMark	redis.h	1376;"	d
+redisDebug	redis.h	1399;"	d
+redisDebugMark	redis.h	1401;"	d
 redisFunctionSym	redis.h	/^struct redisFunctionSym {$/;"	s
 redisGetKeysProc	redis.h	/^typedef int *redisGetKeysProc(struct redisCommand *cmd, robj **argv, int argc, int *numkeys, int flags);$/;"	t
 redisObject	redis.h	/^typedef struct redisObject {$/;"	s
@@ -1712,7 +1711,7 @@ redisOp	redis.h	/^typedef struct redisOp {$/;"	s
 redisOp	redis.h	/^} redisOp;$/;"	t	typeref:struct:redisOp
 redisOpArray	redis.h	/^typedef struct redisOpArray {$/;"	s
 redisOpArray	redis.h	/^} redisOpArray;$/;"	t	typeref:struct:redisOpArray
-redisPanic	redis.h	364;"	d
+redisPanic	redis.h	366;"	d
 redisServer	redis.h	/^struct redisServer {$/;"	s
 redisSortObject	redis.h	/^} redisSortObject;$/;"	t	typeref:struct:_redisSortObject
 redisSortOperation	redis.h	/^} redisSortOperation;$/;"	t	typeref:struct:_redisSortOperation
@@ -1762,8 +1761,8 @@ requirepass	redis.h	/^    char *requirepass;          \/* Pass for AUTH command,
 robj	redis.h	/^} robj;$/;"	t	typeref:struct:redisObject
 roslaveerr	redis.h	/^    *masterdownerr, *roslaveerr, *execaborterr, *noautherr, *noreplicaserr,$/;"	m	struct:sharedObjectsStruct
 rpop	redis.h	/^    *unsubscribebulk, *psubscribebulk, *punsubscribebulk, *del, *rpop, *lpop,$/;"	m	struct:sharedObjectsStruct
-rpopCommand	redis.h	/^                        *rpopCommand;$/;"	m	struct:redisServer	typeref:struct:redisServer::
-run_with_period	redis.h	359;"	d
+rpopCommand	redis.h	/^    struct redisCommand *delCommand, *multiCommand, *lpushCommand, *lpopCommand,*rpopCommand;$/;"	m	struct:redisServer	typeref:struct:redisServer::
+run_with_period	redis.h	360;"	d
 runid	redis.h	/^    char runid[REDIS_RUN_ID_SIZE+1];  \/* ID always different at every exec. *\/$/;"	m	struct:redisServer
 sameobjecterr	redis.h	/^    *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,$/;"	m	struct:sharedObjectsStruct
 saveparam	redis.h	/^struct saveparam {$/;"	s
