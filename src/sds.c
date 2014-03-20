@@ -51,14 +51,18 @@
 sds sdsnewlen(const void *init, size_t initlen) {
     struct sdshdr *sh;
 
+    // 预留 sdshdr 的空间
     if (init) {
         sh = zmalloc(sizeof(struct sdshdr)+initlen+1);
     } else {
         sh = zcalloc(sizeof(struct sdshdr)+initlen+1);
     }
     if (sh == NULL) return NULL;
+
     sh->len = initlen;
     sh->free = 0;
+
+    // 将原有的数据拷贝到新的空间
     if (initlen && init)
         memcpy(sh->buf, init, initlen);
     sh->buf[initlen] = '\0';

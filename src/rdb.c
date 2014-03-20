@@ -274,7 +274,7 @@ int rdbSaveRawString(rio *rdb, unsigned char *s, size_t len) {
     int enclen;
     int n, nwritten = 0;
 
-    // 尝试将他解析为一个整数
+    // 尝试将他解析为一个整数，11 位刚好是整数的长度
     /* Try integer encoding */
     if (len <= 11) {
         unsigned char buf[5];
@@ -285,6 +285,7 @@ int rdbSaveRawString(rio *rdb, unsigned char *s, size_t len) {
         }
     }
 
+    // 压缩字符串
     /* Try LZF compression - under 20 bytes it's unable to compress even
      * aaaaaaaaaaaaaaaaaa so skip it */
     if (server.rdb_compression && len > 20) {
@@ -294,7 +295,7 @@ int rdbSaveRawString(rio *rdb, unsigned char *s, size_t len) {
         /* Return value of 0 means data can't be compressed, save the old way */
     }
 
-    // 逐项保存，长度，字符串数据
+    // 如果尝试编码为数字和压缩字符串失败，将逐项保存，长度，字符串数据
     /* Store verbatim */
     if ((n = rdbSaveLen(rdb,len)) == -1) return -1;
     nwritten += n;
@@ -344,6 +345,8 @@ robj *rdbGenericLoadStringObject(rio *rdb, int encode) {
     sds val;
 
     len = rdbLoadLen(rdb,&isencoded);
+
+    // isencoded ==1 表示 6 bit length
     if (isencoded) {
         switch(len) {
         case REDIS_RDB_ENC_INT8:
@@ -360,6 +363,8 @@ robj *rdbGenericLoadStringObject(rio *rdb, int encode) {
     }
 
     if (len == REDIS_RDB_LENERR) return NULL;
+
+    // 读取字符串
     val = sdsnewlen(NULL,len);
     if (len && rioRead(rdb,val,len) == 0) {
         sdsfree(val);
@@ -623,6 +628,7 @@ off_t rdbSavedObjectLen(robj *o) {
 int rdbSaveKeyValuePair(rio *rdb, robj *key, robj *val,
                         long long expiretime, long long now)
 {
+    // 过期时间
     /* Save the expire time */
     if (expiretime != -1) {
         /* If this key is already expired skip it */
@@ -632,8 +638,13 @@ int rdbSaveKeyValuePair(rio *rdb, robj *key, robj *val,
     }
 
     /* Save type, key, value */
+    // 数据类型
     if (rdbSaveObjectType(rdb,val) == -1) return -1;
+
+    // 键
     if (rdbSaveStringObject(rdb,key) == -1) return -1;
+
+    // 值
     if (rdbSaveObject(rdb,val) == -1) return -1;
     return 1;
 }
@@ -660,7 +671,9 @@ int rdbSave(char *filename) {
         return REDIS_ERR;
     }
 
+    // 初始化 rdb 结构体。rdb 结构体内指定了读写文件的函数，已写/读字符统计等数据
     rioInitWithFile(&rdb,fp);
+
     if (server.rdb_checksum) // 校验和
         rdb.update_cksum = rioGenericUpdateChecksum;
 
@@ -672,19 +685,22 @@ int rdbSave(char *filename) {
         // server 中保存的数据
         redisDb *db = server.db+j;
 
+        // 字典
         dict *d = db->dict;
         if (dictSize(d) == 0) continue;
+
+        // 字典迭代器
         di = dictGetSafeIterator(d);
         if (!di) {
             fclose(fp);
             return REDIS_ERR;
         }
 
-        // 数据库操作码
+        // 写入 RDB 操作码
         /* Write the SELECT DB opcode */
         if (rdbSaveType(&rdb,REDIS_RDB_OPCODE_SELECTDB) == -1) goto werr;
 
-        // 数据库序号
+        // 写入数据库序号
         if (rdbSaveLen(&rdb,j) == -1) goto werr;
 
         // 写入数据库中每一个数据项
@@ -708,7 +724,7 @@ int rdbSave(char *filename) {
     }
     di = NULL; /* So that we don't release it again on error. */
 
-    // 结束
+    // RDB 结束码
     /* EOF opcode */
     if (rdbSaveType(&rdb,REDIS_RDB_OPCODE_EOF) == -1) goto werr;
 
@@ -719,7 +735,7 @@ int rdbSave(char *filename) {
     memrev64ifbe(&cksum);
     rioWrite(&rdb,&cksum,8);
 
-    // 刷新，强制写入
+    // 同步到磁盘
     /* Make sure data will not remain on the OS's output buffers */
     fflush(fp);
     fsync(fileno(fp));
@@ -735,11 +751,16 @@ int rdbSave(char *filename) {
     }
     redisLog(REDIS_NOTICE,"DB saved on disk");
     server.dirty = 0;
+
+    // 记录成功执行保存的时间
     server.lastsave = time(NULL);
+
+    // 记录执行的结果状态为成功
     server.lastbgsave_status = REDIS_OK;
     return REDIS_OK;
 
 werr:
+    // 清理工作，关闭文件描述符等
     fclose(fp);
     unlink(tmpfile);
     redisLog(REDIS_WARNING,"Write error saving DB on disk: %s", strerror(errno));
@@ -752,16 +773,19 @@ int rdbSaveBackground(char *filename) {
     pid_t childpid;
     long long start;
 
-    // 已经有后台程序了
+    // 已经有后台程序了，拒绝再次执行
     if (server.rdb_child_pid != -1) return REDIS_ERR;
 
     server.dirty_before_bgsave = server.dirty;
+
+    // 记录这次尝试执行持久化操作的时间
     server.lastbgsave_try = time(NULL);
 
     start = ustime();
     if ((childpid = fork()) == 0) {
         int retval;
 
+        // 取消监听
         /* Child */
         closeListeningSockets(0);
         redisSetProcTitle("redis-rdb-bgsave");
@@ -769,7 +793,7 @@ int rdbSaveBackground(char *filename) {
         // 执行备份主程序
         retval = rdbSave(filename);
 
-        // 脏数据
+        // 脏数据，其实就是子进程所消耗的内存大小
         if (retval == REDIS_OK) {
             // 获取脏数据大小
             size_t private_dirty = zmalloc_get_private_dirty();
@@ -791,13 +815,18 @@ int rdbSaveBackground(char *filename) {
 
         // fork 出错
         if (childpid == -1) {
+            // 记录执行的结果状态为失败
             server.lastbgsave_status = REDIS_ERR;
             redisLog(REDIS_WARNING,"Can't save in background: fork: %s",
                 strerror(errno));
             return REDIS_ERR;
         }
         redisLog(REDIS_NOTICE,"Background saving started by pid %d",childpid);
-        server.rdb_save_time_start = time(NULL); // 保存的起始时间
+
+        // 记录保存的起始时间
+        server.rdb_save_time_start = time(NULL);
+
+        // 子进程 ID
         server.rdb_child_pid = childpid;
         updateDictResizePolicy();
         return REDIS_OK;
@@ -838,6 +867,7 @@ robj *rdbLoadObject(int rdbtype, rio *rdb) {
 
         /* Load every single element of the list */
         while(len--) {
+            // load element
             if ((ele = rdbLoadEncodedStringObject(rdb)) == NULL) return NULL;
 
             /* If we are using a ziplist and the value is too big, convert

@@ -54,7 +54,7 @@
  * Lengths up to 63 are stored using a single byte, most DB keys, and may
  * values, will fit inside. */
 
- // 这些定义见上面的解释
+// 这些定义见上面的解释
 #define REDIS_RDB_6BITLEN 0
 #define REDIS_RDB_14BITLEN 1
 #define REDIS_RDB_32BITLEN 2

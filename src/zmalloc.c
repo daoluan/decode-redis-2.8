@@ -87,6 +87,7 @@ void zlibc_free(void *ptr) {
 
 #define update_zmalloc_stat_alloc(__n) do { \
     size_t _n = (__n); \
+    // 去掉后面两位，是为了对齐
     if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \
     if (zmalloc_thread_safe) { \
         update_zmalloc_stat_add(_n); \
@@ -109,6 +110,7 @@ static size_t used_memory = 0;
 static int zmalloc_thread_safe = 0;
 pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// out of memory 出错处理
 static void zmalloc_default_oom(size_t size) {
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
@@ -121,7 +123,9 @@ static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 void *zmalloc(size_t size) {
     void *ptr = malloc(size+PREFIX_SIZE);
 
+    // error. out of memory.
     if (!ptr) zmalloc_oom_handler(size);
+
 #ifdef HAVE_MALLOC_SIZE
     update_zmalloc_stat_alloc(zmalloc_size(ptr));
     return ptr;
@@ -196,10 +200,13 @@ void zfree(void *ptr) {
 #endif
 
     if (ptr == NULL) return;
+
+    // 调整已分配内存大小
 #ifdef HAVE_MALLOC_SIZE
     update_zmalloc_stat_free(zmalloc_size(ptr));
     free(ptr);
 #else
+    // 内存真正开始的地方
     realptr = (char*)ptr-PREFIX_SIZE;
     oldsize = *((size_t*)realptr);
     update_zmalloc_stat_free(oldsize+PREFIX_SIZE);
@@ -349,3 +356,4 @@ size_t zmalloc_get_private_dirty(void) {
     return 0;
 }
 #endif
+

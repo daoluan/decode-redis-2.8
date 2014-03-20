@@ -937,6 +937,7 @@ int processInlineBuffer(redisClient *c) {
     if (c->argv) zfree(c->argv);
     c->argv = zmalloc(sizeof(robj*)*argc);
 
+    // 为所有的参数建立 redis 对象
     /* Create redis objects for all arguments. */
     for (c->argc = 0, j = 0; j < argc; j++) {
         if (sdslen(argv[j])) {

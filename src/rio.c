@@ -102,6 +102,7 @@ static off_t rioFileTell(rio *r) {
     return ftello(r->io.file.fp);
 }
 
+// 适用于内存缓存
 static const rio rioBufferIO = {
     rioBufferRead,
     rioBufferWrite,
@@ -113,6 +114,7 @@ static const rio rioBufferIO = {
     { { NULL, 0 } } /* union for io-specific vars */
 };
 
+// 适用于文件 IO
 static const rio rioFileIO = {
     rioFileRead,
     rioFileWrite,
