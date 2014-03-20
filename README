@@ -1,3 +1,5 @@
+这是一份 redis 源码阅读注释。
+
 Where to find complete Redis documentation?
 -------------------------------------------
 
@@ -73,7 +75,7 @@ To run Redis with the default configuration just type:
 
     % cd src
     % ./redis-server
-    
+
 If you want to provide your redis.conf, you have to run it using an additional
 parameter (the path of the configuration file):
 
@@ -107,7 +109,7 @@ then in another terminal try the following:
     (integer) 1
     redis> incr mycounter
     (integer) 2
-    redis> 
+    redis>
 
 You can find the list of all the available commands here:
 
