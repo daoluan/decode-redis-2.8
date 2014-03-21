@@ -703,7 +703,7 @@ int rdbSave(char *filename) {
         // 写入数据库序号
         if (rdbSaveLen(&rdb,j) == -1) goto werr;
 
-        // 写入数据库中每一个数据项
+        // 写入数据集中每一个数据项
         /* Iterate this DB writing every entry */
         while((de = dictNext(di)) != NULL) {
             sds keystr = dictGetKey(de);

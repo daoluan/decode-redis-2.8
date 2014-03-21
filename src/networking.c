@@ -133,7 +133,10 @@ int prepareClientToWrite(redisClient *c) {
     if (c->flags & REDIS_LUA_CLIENT) return REDIS_OK;
     if ((c->flags & REDIS_MASTER) &&
         !(c->flags & REDIS_MASTER_FORCE_REPLY)) return REDIS_ERR;
+
+    // redisClient->fd <= 0 表示是虚拟的客户端，在 AOF 恢复数据的时候能用得到
     if (c->fd <= 0) return REDIS_ERR; /* Fake client */
+
     if (c->bufpos == 0 && listLength(c->reply) == 0 &&
         (c->replstate == REDIS_REPL_NONE ||
          c->replstate == REDIS_REPL_ONLINE) &&

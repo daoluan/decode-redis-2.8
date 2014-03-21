@@ -52,6 +52,8 @@ robj *createStringObject(char *ptr, size_t len) {
 robj *createStringObjectFromLongLong(long long value) {
     robj *o;
     if (value >= 0 && value < REDIS_SHARED_INTEGERS) {
+        // 指向共享对象
+        // redis 为 10000 以内的整数都提供了共享对象，详见 shared.integers 数组
         incrRefCount(shared.integers[value]);
         o = shared.integers[value];
     } else {
@@ -336,6 +338,7 @@ robj *tryObjectEncoding(robj *o) {
     }
 }
 
+// 解码 redis 对象
 /* Get a decoded version of an encoded object (returned as a new object).
  * If the object is already raw-encoded just increment the ref count. */
 robj *getDecodedObject(robj *o) {
