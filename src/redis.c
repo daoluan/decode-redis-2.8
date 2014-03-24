@@ -1020,6 +1020,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         server.shutdown_asap = 0;
     }
 
+    // 记录非空数据集的信息
     /* Show some info about non-empty databases */
     run_with_period(5000) {
         for (j = 0; j < server.dbnum; j++) {
@@ -1052,7 +1053,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* Handle background operations on Redis databases. */
     databasesCron();
 
-    // 如果需要，触发 AOF
+    // 如果用户设置了 server.aof_rewrite_scheduled 选项且后台没有 RDB 或者 AOF 子进程，触发 AOF
     /* Start a scheduled AOF rewrite if this was requested by the user while
      * a BGSAVE was in progress. */
     if (server.rdb_child_pid == -1 && server.aof_child_pid == -1 &&
@@ -1070,6 +1071,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             int exitcode = WEXITSTATUS(statloc);
             int bysignal = 0;
 
+            // 当子进程异常退出时，WIFSIGNALED(status）为真，可用WTERMSIG(status)获得信号
             if (WIFSIGNALED(statloc)) bysignal = WTERMSIG(statloc);
 
             // 结束 rdb 进程
@@ -1090,9 +1092,12 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         }
     } else {
         // 如果后台没有备份进程，按需启动 BGSAVE 或者 AOF
+
+        // 按需触发 RDB
         /* If there is not a background saving/rewrite in progress check if
          * we have to save/rewrite now */
          for (j = 0; j < server.saveparamslen; j++) {
+            // server.saveparams 在服务器初始化的时候就设置了，详见 main()
             struct saveparam *sp = server.saveparams+j;
 
             /* Save if we reached the given amount of changes,
@@ -1100,8 +1105,14 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
              * successful or if, in case of an error, at least
              * REDIS_BGSAVE_RETRY_DELAY seconds already elapsed. */
             // 达到需要备份的条件，调用 rdbSaveBackground() 进行备份
+
+            // 1.更新次数超过了限定次数
             if (server.dirty >= sp->changes &&
+
+                // 2.距离上一次更新时间太久
                 server.unixtime-server.lastsave > sp->seconds &&
+
+                // 3.距离上一次尝试 RDB 时间太久或者上次备份成功
                 (server.unixtime-server.lastbgsave_try >
                  REDIS_BGSAVE_RETRY_DELAY ||
                  server.lastbgsave_status == REDIS_OK))
@@ -1113,15 +1124,21 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             }
          }
 
+         // 触发 AOF 持久化
          /* Trigger an AOF rewrite if needed */
          if (server.rdb_child_pid == -1 &&
              server.aof_child_pid == -1 &&
              server.aof_rewrite_perc &&
              server.aof_current_size > server.aof_rewrite_min_size)
          {
+            // server.aof_rewrite_base_size 已经成被 server.aof_current_size 更新
             long long base = server.aof_rewrite_base_size ?
                             server.aof_rewrite_base_size : 1;
+
+            // 计算数据增长的百分比
             long long growth = (server.aof_current_size*100/base) - 100;
+
+            // 如果超过预设，执行 AOF 持久化
             if (growth >= server.aof_rewrite_perc) {
                 redisLog(REDIS_NOTICE,"Starting automatic rewriting of AOF on %lld%% growth",growth);
                 rewriteAppendOnlyFileBackground();
@@ -1129,14 +1146,17 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
          }
     }
 
-
+    // AOF flush 被推迟，尝试将 server.aof_buf 中的缓存数据非强制写入磁盘
     /* If we postponed an AOF buffer flush, let's try to do it every time the
      * cron function is called. */
     if (server.aof_flush_postponed_start) flushAppendOnlyFile(0);
 
+    // 为什么需要异步关闭客户端连接？？？
+    // 一般在主从连接处理中用到
     /* Close clients that need to be closed asynchronous */
     freeClientsInAsyncFreeQueue();
 
+    // 主从连接
     /* Replication cron function -- used to reconnect to master and
      * to detect transfer failures. */
     run_with_period(1000) replicationCron();
@@ -1182,7 +1202,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
         }
     }
 
-    // AOF 会保存每次数据操作的记录，在 redis 重启后会重做这些操作，从而达到数据的一致
+    // 将 server.aof_buf 中的缓存数据非强制写入磁盘
     /* Write the AOF buffer on disk */
     flushAppendOnlyFile(0);
 }
@@ -1676,6 +1696,7 @@ void initServer() {
     if (server.sofd > 0 && aeCreateFileEvent(server.el,server.sofd,AE_READABLE,
         acceptUnixHandler,NULL) == AE_ERR) redisPanic("Unrecoverable error creating server.sofd file event.");
 
+    // 开启了 AOF 持久化策略，打开 AOF 文件
     /* Open the AOF file if needed. */
     if (server.aof_state == REDIS_AOF_ON) {
         server.aof_fd = open(server.aof_filename,
@@ -1821,6 +1842,7 @@ struct redisCommand *lookupCommandOrOriginal(sds name) {
     return cmd;
 }
 
+// 往 AOF 和从机传播指定命令
 /* Propagate the specified command (in the context of the specified database id)
  * to AOF and Slaves.
  *
@@ -1907,6 +1929,7 @@ void call(redisClient *c, int flags) {
         c->cmd->calls++;
     }
 
+    // 将客户端请求的命令传播给 AOF 和从机
     /* Propagate the command into the AOF and replication link */
     if (flags & REDIS_CALL_PROPAGATE) {
         int flags = REDIS_PROPAGATE_NONE;
@@ -1924,6 +1947,7 @@ void call(redisClient *c, int flags) {
     c->flags &= ~(REDIS_FORCE_AOF|REDIS_FORCE_REPL);
     c->flags |= client_old_flags & (REDIS_FORCE_AOF|REDIS_FORCE_REPL);
 
+    // redis server.also_propagate 保存了 redis 的操作数组，需要传播给 AOF 和主从复制连接
     /* Handle the alsoPropagate() API to handle commands that want to propagate
      * multiple separated commands. */
     if (server.also_propagate.numops) {

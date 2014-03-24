@@ -85,6 +85,7 @@ unsigned long aofRewriteBufferSize(void) {
     return size;
 }
 
+// 此函数只由 feedAppendOnlyFile() 调用
 /* Append data to the AOF rewrite buffer, allocating new blocks if needed. */
 void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
     // 尾插法
@@ -108,9 +109,12 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
         if (len) { /* First block to allocate, or need another block. */
             int numblocks;
 
+            // 创建新的节点，插到尾部
             block = zmalloc(sizeof(*block));
             block->free = AOF_RW_BUF_BLOCK_SIZE;
             block->used = 0;
+
+            // 尾插法
             listAddNodeTail(server.aof_rewrite_buf_blocks,block);
 
             /* Log every time we cross more 10 or 100 blocks, respectively
@@ -171,9 +175,12 @@ void stopAppendOnly(void) {
     aof_fsync(server.aof_fd);
     close(server.aof_fd);
 
+    // 取消相关选项的设置
     server.aof_fd = -1;
     server.aof_selected_db = -1;
     server.aof_state = REDIS_AOF_OFF;
+
+    // 杀死 AOF 子进程，并取消相关选项
     /* rewrite operation in progress? kill it, wait child exit */
     if (server.aof_child_pid != -1) {
         int statloc;
@@ -190,13 +197,17 @@ void stopAppendOnly(void) {
     }
 }
 
-// 开启 AOF 操作
+/*
+开启 AOF 操作。主要做了 3 件事：
+1.fork 后台进程，执行 AOF 持久化
+2.打开预设文件名为 server.aof_filename 的文件，时刻准备写入
+3.更新 server.aof_state 值*/
 /* Called when the user switches from "appendonly no" to "appendonly yes"
  * at runtime using the CONFIG command. */
 int startAppendOnly(void) {
     server.aof_last_fsync = server.unixtime;
 
-    // 打开文件
+    // 注意！！！以追加的方式打开文件
     server.aof_fd = open(server.aof_filename,O_WRONLY|O_APPEND|O_CREAT,0644);
     redisAssert(server.aof_state == REDIS_AOF_OFF);
     if (server.aof_fd == -1) {
@@ -246,20 +257,26 @@ void flushAppendOnlyFile(int force) {
         sync_in_progress = bioPendingJobsOfType(REDIS_BIO_AOF_FSYNC) != 0;
 
     if (server.aof_fsync == AOF_FSYNC_EVERYSEC && !force) {
+        // 推迟执行 AOF
         /* With this append fsync policy we do background fsyncing.
          * If the fsync is still in progress we can try to delay
          * the write for a couple of seconds. */
         if (sync_in_progress) {
             if (server.aof_flush_postponed_start == 0) {
+                // 没有设置时间，就设置时间
                 /* No previous write postponinig, remember that we are
                  * postponing the flush and return. */
-                server.aof_flush_postponed_start = server.unixtime;
+                server.aof_flush_postponed_start = server.unixtime; // /* Unix time sampled every cron cycle. */
                 return;
+
+            // 没有超过 2s，直接结束
             } else if (server.unixtime - server.aof_flush_postponed_start < 2) {
                 /* We were already waiting for fsync to finish, but for less
                  * than two seconds this is still ok. Postpone again. */
                 return;
             }
+
+            // 否则，要强制写入磁盘
             /* Otherwise fall trough, and go write since we can't wait
              * over two seconds. */
             server.aof_delayed_fsync++;
@@ -275,7 +292,9 @@ void flushAppendOnlyFile(int force) {
      * While this will save us against the server being killed I don't think
      * there is much to do about the whole server stopping for power problems
      * or alike */
+    // AOF 文件已经打开了。将 server.aof_buf 中的所有缓存数据写入文件
     nwritten = write(server.aof_fd,server.aof_buf,sdslen(server.aof_buf));
+
     if (nwritten != (signed)sdslen(server.aof_buf)) {
         /* Ooops, we are in troubles. The best thing to do for now is
          * aborting instead of giving the illusion that everything is
@@ -299,8 +318,13 @@ void flushAppendOnlyFile(int force) {
         }
         exit(1);
     }
+
+    // 更新 AOF 文件的大小
     server.aof_current_size += nwritten;
 
+/*
+    当 server.aof_buf 足够小,重新利用空间，防止频繁的内存分配。
+    相反，当 server.aof_buf 占据大量的空间，采取的策略是释放空间，可见 redis 对内存很敏感。*/
     /* Re-use AOF buffer when it is small enough. The maximum comes from the
      * arena size of 4k minus some overhead (but is otherwise arbitrary). */
     if ((sdslen(server.aof_buf)+sdsavail(server.aof_buf)) < 4000) {
@@ -316,6 +340,7 @@ void flushAppendOnlyFile(int force) {
         (server.aof_child_pid != -1 || server.rdb_child_pid != -1))
             return;
 
+    // 执行同步操作，写入磁盘
     /* Perform the fsync if needed. */
     if (server.aof_fsync == AOF_FSYNC_ALWAYS) {
         /* aof_fsync is defined as fdatasync() for Linux in order to avoid
@@ -394,7 +419,7 @@ sds catAppendOnlyExpireAtCommand(sds buf, struct redisCommand *cmd, robj *key, r
     return buf;
 }
 
-// ？？？
+// 将命令追写到 AOF 缓存中
 void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc) {
     sds buf = sdsempty();
     robj *tmpargv[3];
@@ -429,12 +454,14 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
         buf = catAppendOnlyGenericCommand(buf,argc,argv);
     }
 
+    // 将生成的 AOF 追加到 server.aof_buf 中。server.在下一次进入事件循环之前，aof_buf 中的内容将会写到磁盘上
     /* Append to the AOF buffer. This will be flushed on disk just before
      * of re-entering the event loop, so before the client will get a
      * positive reply about the operation performed. */
     if (server.aof_state == REDIS_AOF_ON)
         server.aof_buf = sdscatlen(server.aof_buf,buf,sdslen(buf));
 
+    // 如果已经有 AOF 子进程运行，redis 采取的策略是积累子进程 AOF 备份的数据和内存中数据集的差异。 aofRewriteBufferAppend() 把 buf 的内容追加到 server.aof_rewrite_buf_blocks 数组中
     /* If a background append only file rewriting is in progress we want to
      * accumulate the differences between the child DB and the current one
      * in a buffer, so that when the child process will do its work we
@@ -542,12 +569,16 @@ int loadAppendOnlyFile(char *filename) {
         // 必须以“*”开头，格式不对，退出
         if (buf[0] != '*') goto fmterr;
 
+        // 参数的个数
         argc = atoi(buf+1);
 
-        // 格式不对，退出
+        // 参数个数错误
         if (argc < 1) goto fmterr;
 
+        // 为参数分配空间
         argv = zmalloc(sizeof(robj*)*argc);
+
+        // 依次读取参数
         for (j = 0; j < argc; j++) {
             if (fgets(buf,sizeof(buf),fp) == NULL) goto readerr;
             if (buf[0] != '$') goto fmterr;
@@ -566,7 +597,7 @@ int loadAppendOnlyFile(char *filename) {
             exit(1);
         }
 
-        // 执行命令，模拟服务客户端的过程，从而写入数据
+        // 执行命令，模拟服务客户端请求的过程，从而写入数据
         /* Run the command in the context of a fake client */
         fakeClient->argc = argc;
         fakeClient->argv = argv;
@@ -577,6 +608,7 @@ int loadAppendOnlyFile(char *filename) {
         /* The fake client should never get blocked */
         redisAssert((fakeClient->flags & REDIS_BLOCKED) == 0);
 
+        // 释放虚拟客户端空间
         /* Clean up. Command code may have changed argv/argc so we use the
          * argv/argc of the client instead of the local variables. */
         for (j = 0; j < fakeClient->argc; j++)
@@ -1128,9 +1160,11 @@ void aofUpdateCurrentSize(void) {
     }
 }
 
+// 在 AOF 持久化结束后会执行这个函数， backgroundRewriteDoneHandler() 主要工作是将 server.aof_rewrite_buf_blocks，即 AOF 缓存写入文件
 /* A background append only file rewriting (BGREWRITEAOF) terminated its work.
  * Handle this. */
 void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
+    // 正常情况
     if (!bysignal && exitcode == 0) {
         int newfd, oldfd;
         char tmpfile[256];
@@ -1143,6 +1177,8 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
          * rewritten AOF. */
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof",
             (int)server.aof_child_pid);
+
+        // 注意！！！以追加的方式打开文件
         newfd = open(tmpfile,O_WRONLY|O_APPEND);
         if (newfd == -1) {
             redisLog(REDIS_WARNING,
@@ -1150,6 +1186,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
             goto cleanup;
         }
 
+        // 将 AOF 缓存 server.aof_rewrite_buf_blocks 的 AOF 写入磁盘
         if (aofRewriteBufferWrite(newfd) == -1) {
             redisLog(REDIS_WARNING,
                 "Error trying to flush the parent diff to the rewritten AOF: %s", strerror(errno));
@@ -1199,6 +1236,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
             oldfd = -1; /* We'll set this to the current AOF filedes later. */
         }
 
+        // 重命名临时文件
         /* Rename the temporary file. This will not unlink the target file if
          * it exists, because we reference it with "oldfd". */
         if (rename(tmpfile,server.aof_filename) == -1) {
@@ -1209,28 +1247,35 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
             goto cleanup;
         }
 
+        // AOF 持久化策略被关闭了，不用设置任何选项
         if (server.aof_fd == -1) {
             /* AOF disabled, we don't need to set the AOF file descriptor
              * to this new file, so we can close it. */
             close(newfd);
         } else {
+            // AOF 操作被允许，设置相应的选项
             /* AOF enabled, replace the old fd with the new one. */
             oldfd = server.aof_fd;
             server.aof_fd = newfd;
+
+            // 有两种同步磁盘的策略：一种是立即执行同步磁盘，另一种是交由后台任务完成
             if (server.aof_fsync == AOF_FSYNC_ALWAYS)
                 aof_fsync(newfd);
             else if (server.aof_fsync == AOF_FSYNC_EVERYSEC)
                 aof_background_fsync(newfd);
+
             server.aof_selected_db = -1; /* Make sure SELECT is re-issued */
+
+            // 记录最近 AOF 操作的文件大小
             aofUpdateCurrentSize();
             server.aof_rewrite_base_size = server.aof_current_size;
 
+            // 释放 server.aof_buf
             /* Clear regular AOF buffer since its contents was just written to
              * the new AOF from the background rewrite buffer. */
             sdsfree(server.aof_buf);
             server.aof_buf = sdsempty();
         }
-
         server.aof_lastbgrewrite_status = REDIS_OK;
 
         redisLog(REDIS_NOTICE, "Background AOF rewrite finished successfully");
@@ -1243,11 +1288,13 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
 
         redisLog(REDIS_VERBOSE,
             "Background AOF rewrite signal handler took %lldus", ustime()-now);
+    // AOF 出现某些错误
     } else if (!bysignal && exitcode != 0) {
         server.aof_lastbgrewrite_status = REDIS_ERR;
 
         redisLog(REDIS_WARNING,
             "Background AOF rewrite terminated with error");
+    // 被信号叫停
     } else {
         server.aof_lastbgrewrite_status = REDIS_ERR;
 

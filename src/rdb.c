@@ -1282,15 +1282,19 @@ eoferr: /* unexpected end of file is handled here with a fatal exit */
 
 /* A background saving child (BGSAVE) terminated its work. Handle this. */
 void backgroundSaveDoneHandler(int exitcode, int bysignal) {
+    // 正常情况
     if (!bysignal && exitcode == 0) {
         redisLog(REDIS_NOTICE,
             "Background saving terminated with success");
         server.dirty = server.dirty - server.dirty_before_bgsave;
         server.lastsave = time(NULL);
         server.lastbgsave_status = REDIS_OK;
+    // RDB 的某些错误
     } else if (!bysignal && exitcode != 0) {
         redisLog(REDIS_WARNING, "Background saving error");
         server.lastbgsave_status = REDIS_ERR;
+
+    // 被信号叫停
     } else {
         redisLog(REDIS_WARNING,
             "Background saving terminated by signal %d", bysignal);

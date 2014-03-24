@@ -756,6 +756,7 @@ void freeClient(redisClient *c) {
      * we lost the connection with the master. */
     if (c->flags & REDIS_MASTER) replicationHandleMasterDisconnection();
 
+    // 在待关闭链表中删除
     /* If this client was scheduled for async freeing we need to remove it
      * from the queue. */
     if (c->flags & REDIS_CLOSE_ASAP) {
