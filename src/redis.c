@@ -957,6 +957,7 @@ void databasesCron(void) {
     }
 }
 
+// redis 定时执行程序。联想：linux cron
 /* This is our timer interrupt, called server.hz times per second.
  * Here is where we do a number of things that need to be done asynchronously.
  * For instance:
@@ -1067,6 +1068,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         int statloc;
         pid_t pid;
 
+        // 等待 RDB 或者 AOF 子进程的结束
         if ((pid = wait3(&statloc,WNOHANG,NULL)) != 0) {
             int exitcode = WEXITSTATUS(statloc);
             int bysignal = 0;
@@ -1146,7 +1148,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
          }
     }
 
-    // AOF flush 被推迟，尝试将 server.aof_buf 中的缓存数据非强制写入磁盘
+    // 设置了延迟冲洗时间选项，尝试将 server.aof_buf 中的缓存数据非强制写入磁盘
     /* If we postponed an AOF buffer flush, let's try to do it every time the
      * cron function is called. */
     if (server.aof_flush_postponed_start) flushAppendOnlyFile(0);
@@ -1696,7 +1698,7 @@ void initServer() {
     if (server.sofd > 0 && aeCreateFileEvent(server.el,server.sofd,AE_READABLE,
         acceptUnixHandler,NULL) == AE_ERR) redisPanic("Unrecoverable error creating server.sofd file event.");
 
-    // 开启了 AOF 持久化策略，打开 AOF 文件
+    // 开启了 AOF 持久化策略，以追加的方式打开 AOF 文件
     /* Open the AOF file if needed. */
     if (server.aof_state == REDIS_AOF_ON) {
         server.aof_fd = open(server.aof_filename,
@@ -1854,8 +1856,11 @@ struct redisCommand *lookupCommandOrOriginal(sds name) {
 void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
                int flags)
 {
+    // AOF 策略需要打开，且设置 AOF 传播标记
     if (server.aof_state != REDIS_AOF_OFF && flags & REDIS_PROPAGATE_AOF)
         feedAppendOnlyFile(cmd,dbid,argv,argc);
+
+    // 设置了从机传播标记
     if (flags & REDIS_PROPAGATE_REPL)
         replicationFeedSlaves(server.slaves,dbid,argv,argc);
 }
