@@ -326,6 +326,7 @@ void addReply(redisClient *c, robj *obj) {
 }
 
 void addReplySds(redisClient *c, sds s) {
+    // 注册写事件，准备回复客户端
     if (prepareClientToWrite(c) != REDIS_OK) {
         /* The caller expects the sds to be free'd. */
         sdsfree(s);
@@ -448,6 +449,7 @@ void addReplyLongLongWithPrefix(redisClient *c, long long ll, char prefix) {
     char buf[128];
     int len;
 
+    // 发送头，尽量使用共享对象
     /* Things like $3\r\n or *2\r\n are emitted very often by the protocol
      * so we have a few shared objects to use if the integer is small
      * like it is most of the times. */
@@ -476,6 +478,7 @@ void addReplyLongLong(redisClient *c, long long ll) {
 }
 
 void addReplyMultiBulkLen(redisClient *c, long length) {
+    // 尽量使用共享对象
     if (length < REDIS_SHARED_BULKHDR_LEN)
         addReply(c,shared.mbulkhdr[length]);
     else
@@ -794,6 +797,7 @@ void freeClientsInAsyncFreeQueue(void) {
     }
 }
 
+// 作为回调函数，将客户端中的回复数据发送给客户端
 void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     redisClient *c = privdata;
     int nwritten = 0, totwritten = 0, objlen;

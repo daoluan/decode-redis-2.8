@@ -1309,6 +1309,8 @@ void backgroundSaveDoneHandler(int exitcode, int bysignal) {
     // 计算备份所用的时间
     server.rdb_save_time_last = time(NULL)-server.rdb_save_time_start;
     server.rdb_save_time_start = -1;
+
+    // 可能从机正在等待 BGSAVE 进程的终止
     /* Possibly there are slaves waiting for a BGSAVE in order to be served
      * (the first stage of SYNC is a bulk transfer of dump.rdb) */
     updateSlavesWaitingBgsave(exitcode == 0 ? REDIS_OK : REDIS_ERR);
