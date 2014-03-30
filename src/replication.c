@@ -339,21 +339,6 @@ long long addReplyReplicationBacklog(redisClient *c, long long offset) {
     skip = offset - server.repl_backlog_off;
     redisLog(REDIS_DEBUG, "[PSYNC] Skipping: %lld", skip);
 
-/*
-backlog 的两种情况：
-    1）））））））））））））
-                hist
-    j           idx
-    ···························································   -----> backlog
-    ;skip;
-
-    2)））））））））））））
-          j
-        idx                     hist
-    ···························································   -----> backlog
-           ;skip;
-*/
-
     // 把 j 指向起始位置
     /* Point j to the oldest byte, that is actaully our
      * server.repl_backlog_off byte. */
@@ -366,8 +351,24 @@ backlog 的两种情况：
     /* Discard the amount of data to seek to the specified 'offset'. */
     j = (j + skip) % server.repl_backlog_size;
 
+/*********************************************************************
+backlog 的两种情况：
+    1）））））））））））））
+                hist
+    j           idx
+    ···························································   -----> backlog
+    ;skip;
+
+    2)））））））））））））
+          j
+        idx                     hist
+    ···························································   -----> backlog
+           ;skip;
+**********************************************************************/
+
     /* Feed slave with data. Since it is a circular buffer we have to
      * split the reply in two parts if we are cross-boundary. */
+    // 需要上传的数据大小
     len = server.repl_backlog_histlen - skip;
     redisLog(REDIS_DEBUG, "[PSYNC] Reply total length: %lld", len);
     while(len) {
@@ -395,13 +396,14 @@ int masterTryPartialResynchronization(redisClient *c) {
     char buf[128];
     int buflen;
 
+    // ？？？
     /* Is the runid of this master the same advertised by the wannabe slave
      * via PSYNC? If runid changed this master is a different instance and
      * there is no way to continue. */
     if (strcasecmp(master_runid, server.runid)) {
     // runid 匹配失败
 
-        // "?" 是从机要求全同步
+        // "?" 表示从机要求全同步
         /* Run id "?" is used by slaves that want to force a full resync. */
         if (master_runid[0] != '?') {
             redisLog(REDIS_NOTICE,"Partial resynchronization not accepted: "
@@ -413,6 +415,7 @@ int masterTryPartialResynchronization(redisClient *c) {
         goto need_full_resync;
     }
 
+    // 从参数中解析整数
     /* We still have the data our slave is asking for? */
     if (getLongLongFromObjectOrReply(c,c->argv[2],&psync_offset,NULL) !=
        REDIS_OK) goto need_full_resync;
@@ -461,11 +464,16 @@ int masterTryPartialResynchronization(redisClient *c) {
     return REDIS_OK; /* The caller can return, no full resync needed. */
 
 need_full_resync:
+    // 需要全同步。通知从机进行全同步
     /* We need a full resync for some reason... notify the client. */
     psync_offset = server.master_repl_offset;
+
     /* Add 1 to psync_offset if it the replication backlog does not exists
      * as when it will be created later we'll increment the offset by one. */
+
     if (server.repl_backlog == NULL) psync_offset++;
+
+    // 通知从机
     /* Again, we can't use the connection buffers (see above). */
     buflen = snprintf(buf,sizeof(buf),"+FULLRESYNC %s %lld\r\n",
                       server.runid,psync_offset);
@@ -790,7 +798,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr) {
         }
     }
 
-    有 slave 要求进行 BGSAVE 则启动。
+    // 有 slave 要求进行 BGSAVE 则启动。
     if (startbgsave) {
         /* Since we are starting a new background save for one or more slaves,
          * we flush the Replication Script Cache to use EVAL to propagate every
