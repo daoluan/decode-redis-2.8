@@ -825,7 +825,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr) {
 
 /* ----------------------------------- SLAVE -------------------------------- */
 
-// 停止传输同步数据，注销读事件，关闭连接
+// 停止传输同步数据，注销读事件，关闭文件，关闭连接
 /* Abort the async download of the bulk dataset while SYNC-ing with master */
 void replicationAbortSyncTransfer(void) {
     redisAssert(server.repl_state == REDIS_REPL_TRANSFER);
@@ -1047,6 +1047,7 @@ char *sendSynchronousCommand(int fd, ...) {
     }
     cmd = sdscatlen(cmd,"\r\n",2);
 
+    // 发送数据
     /* Transfer command to the server. */
     if (syncWrite(fd,cmd,sdslen(cmd),server.repl_syncio_timeout*1000) == -1) {
         sdsfree(cmd);
@@ -1055,6 +1056,7 @@ char *sendSynchronousCommand(int fd, ...) {
     }
     sdsfree(cmd);
 
+    // 收到回复
     /* Read the reply from the server. */
     if (syncReadLine(fd,buf,sizeof(buf),server.repl_syncio_timeout*1000) == -1)
     {
@@ -1116,6 +1118,7 @@ int slaveTryPartialResynchronization(int fd) {
     /* Issue the PSYNC command */
     reply = sendSynchronousCommand(fd,"PSYNC",psync_runid,psync_offset,NULL);
 
+    // 全同步
     if (!strncmp(reply,"+FULLRESYNC",11)) {
         char *runid = NULL, *offset = NULL;
 
@@ -1136,6 +1139,7 @@ int slaveTryPartialResynchronization(int fd) {
              * runid to make sure next PSYNCs will fail. */
             memset(server.repl_master_runid,0,REDIS_RUN_ID_SIZE+1);
         } else {
+            // 拷贝 runid
             memcpy(server.repl_master_runid, runid, offset-runid-1);
             server.repl_master_runid[REDIS_RUN_ID_SIZE] = '\0';
             server.repl_master_initial_offset = strtoll(offset,NULL,10);
@@ -1149,6 +1153,7 @@ int slaveTryPartialResynchronization(int fd) {
         return PSYNC_FULLRESYNC;
     }
 
+    // 部分同步
     if (!strncmp(reply,"+CONTINUE",9)) {
         /* Partial resync was accepted, set the replication state accordingly */
         redisLog(REDIS_NOTICE,
@@ -1162,6 +1167,7 @@ int slaveTryPartialResynchronization(int fd) {
      * not understand PSYNC, or an unexpected reply from the master.
      * Reply with PSYNC_NOT_SUPPORTED in both cases. */
 
+    // 出错
     if (strncmp(reply,"-ERR",4)) {
         /* If it's not an error, log the unexpected event. */
         redisLog(REDIS_WARNING,
@@ -1185,6 +1191,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(privdata);
     REDIS_NOTUSED(mask);
 
+    // 连接被中断了
     /* If this event fired after the user turned the instance into a master
      * with SLAVEOF NO ONE we must just return ASAP. */
     if (server.repl_state == REDIS_REPL_NONE) {
@@ -1192,6 +1199,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
 
+    // 检测 SOCKET 错误
     /* Check for errors in the socket. */
     if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &sockerr, &errlen) == -1)
         sockerr = errno;
@@ -1202,6 +1210,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         goto error;
     }
 
+    // 处于连接状态，发送 ping
     /* If we were connecting, it's time to send a non blocking PING, we want to
      * make sure the master is able to reply before going into the actual
      * replication process where we have long timeouts in the order of
@@ -1353,7 +1362,7 @@ int connectWithMaster(void) {
         return REDIS_ERR;
     }
 
-    // 注册各种事件
+    // 注册同步事件
     if (aeCreateFileEvent(server.el,fd,AE_READABLE|AE_WRITABLE,syncWithMaster,NULL) ==
             AE_ERR)
     {
@@ -1368,6 +1377,7 @@ int connectWithMaster(void) {
     return REDIS_OK;
 }
 
+// 断开与主机的数据传输
 /* This function can be called when a non blocking connection is currently
  * in progress to undo it. */
 void undoConnectWithMaster(void) {
@@ -1381,6 +1391,7 @@ void undoConnectWithMaster(void) {
     server.repl_state = REDIS_REPL_CONNECT;
 }
 
+// 尝试断开数据传输和主机连接，注意区分两者，前者是数据传输专用，后者是与主机的连接
 /* This function aborts a non blocking replication attempt if there is one
  * in progress, by canceling the non-blocking connect attempt or
  * the initial bulk transfer.
@@ -1390,11 +1401,13 @@ void undoConnectWithMaster(void) {
  *
  * Otherwise zero is returned and no operation is perforemd at all. */
 int cancelReplicationHandshake(void) {
+    // 正在传输数据，取消传输，断开主机
     if (server.repl_state == REDIS_REPL_TRANSFER) {
         replicationAbortSyncTransfer();
     } else if (server.repl_state == REDIS_REPL_CONNECTING ||
              server.repl_state == REDIS_REPL_RECEIVE_PONG)
     {
+        // 断开主机，
         undoConnectWithMaster();
     } else {
         return 0;
@@ -1402,20 +1415,27 @@ int cancelReplicationHandshake(void) {
     return 1;
 }
 
+// 设置新主机
 /* Set replication to the specified master address and port. */
 void replicationSetMaster(char *ip, int port) {
     sdsfree(server.masterhost);
     server.masterhost = sdsdup(ip);
     server.masterport = port;
+
+    // 断开之前主机的连接
     if (server.master) freeClient(server.master);
     disconnectSlaves(); /* Force our slaves to resync with us as well. */
+
     replicationDiscardCachedMaster(); /* Don't try a PSYNC. */
     freeReplicationBacklog(); /* Don't allow our chained slaves to PSYNC. */
+
+    // cancelReplicationHandshake() 尝试断开数据传输和主机连接
     cancelReplicationHandshake();
     server.repl_state = REDIS_REPL_CONNECT;
     server.master_repl_offset = 0;
 }
 
+// 断开主机
 /* Cancel replication, setting the instance as a master itself. */
 void replicationUnsetMaster(void) {
     if (server.masterhost == NULL) return; /* Nothing to do. */
@@ -1433,13 +1453,17 @@ void replicationUnsetMaster(void) {
         freeClient(server.master);
     }
     replicationDiscardCachedMaster();
+
+    // cancelReplicationHandshake() 尝试断开数据传输和主机连接
     cancelReplicationHandshake();
     server.repl_state = REDIS_REPL_NONE;
 }
 
+// 修改主机
 void slaveofCommand(redisClient *c) {
     if (!strcasecmp(c->argv[1]->ptr,"no") &&
         !strcasecmp(c->argv[2]->ptr,"one")) {
+        // 断开主机连接
         if (server.masterhost) {
             replicationUnsetMaster();
             redisLog(REDIS_NOTICE,"MASTER MODE enabled (user request)");
@@ -1450,6 +1474,7 @@ void slaveofCommand(redisClient *c) {
         if ((getLongFromObjectOrReply(c, c->argv[2], &port, NULL) != REDIS_OK))
             return;
 
+        // 可能已经连接需要连接的主机
         /* Check if we are already attached to the specified slave */
         if (server.masterhost && !strcasecmp(server.masterhost,c->argv[1]->ptr)
             && server.masterport == port) {
@@ -1457,6 +1482,8 @@ void slaveofCommand(redisClient *c) {
             addReplySds(c,sdsnew("+OK Already connected to specified master\r\n"));
             return;
         }
+
+        // 断开之前连接主机的连接，连接新的。 replicationSetMaster() 并不会真正连接主机，只是修改 struct server 中关于主机的设置。真正的主机连接在 replicationCron() 中完成
         /* There was no previous master or the user specified a different one,
          * we can continue. */
         replicationSetMaster(c->argv[1]->ptr, port);
@@ -1534,6 +1561,7 @@ void replicationCacheMaster(redisClient *c) {
     replicationHandleMasterDisconnection();
 }
 
+// 释放缓存主机
 /* Free a cached master, called when there are no longer the conditions for
  * a partial resync on reconnection. */
 void replicationDiscardCachedMaster(void) {
@@ -1545,6 +1573,7 @@ void replicationDiscardCachedMaster(void) {
     server.cached_master = NULL;
 }
 
+// 缓存主机替代现有主机
 /* Turn the cached master into the current master, using the file descriptor
  * passed as argument as the socket for the new master.
  *
@@ -1552,6 +1581,7 @@ void replicationDiscardCachedMaster(void) {
  * so the stream of data that we'll receive will start from were this
  * master left. */
 void replicationResurrectCachedMaster(int newfd) {
+    // 缓存主机替代现有主机
     server.master = server.cached_master;
     server.cached_master = NULL;
     server.master->fd = newfd;
@@ -1560,6 +1590,7 @@ void replicationResurrectCachedMaster(int newfd) {
     server.master->lastinteraction = server.unixtime;
     server.repl_state = REDIS_REPL_CONNECTED;
 
+    // 注册读事件
     /* Re-add to the list of clients. */
     listAddNodeTail(server.clients,server.master);
     if (aeCreateFileEvent(server.el, newfd, AE_READABLE,
@@ -1568,6 +1599,7 @@ void replicationResurrectCachedMaster(int newfd) {
         freeClientAsync(server.master); /* Close ASAP. */
     }
 
+    // 如果有数据需要回复给主机，注册写事件
     /* We may also need to install the write handler as well if there is
      * pending data in the write buffers. */
     if (server.master->bufpos || listLength(server.master->reply)) {
