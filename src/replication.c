@@ -825,11 +825,14 @@ void updateSlavesWaitingBgsave(int bgsaveerr) {
 
 /* ----------------------------------- SLAVE -------------------------------- */
 
+// 停止传输同步数据，注销读事件，关闭连接
 /* Abort the async download of the bulk dataset while SYNC-ing with master */
 void replicationAbortSyncTransfer(void) {
     redisAssert(server.repl_state == REDIS_REPL_TRANSFER);
 
+    // 注销事件
     aeDeleteFileEvent(server.el,server.repl_transfer_s,AE_READABLE);
+
     close(server.repl_transfer_s);
     close(server.repl_transfer_fd);
     unlink(server.repl_transfer_tmpfile);
@@ -837,6 +840,7 @@ void replicationAbortSyncTransfer(void) {
     server.repl_state = REDIS_REPL_CONNECT;
 }
 
+// 防止主机探测超时，相当于心跳包
 /* Avoid the master to detect the slave is timing out while loading the
  * RDB file in initial synchronization. We send a single newline character
  * that is valid protocol but is guaranteed to either be sent entierly or
@@ -882,21 +886,26 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
             goto error;
         }
 
+        // 主机发布了终止连接的信息
         if (buf[0] == '-') {
             redisLog(REDIS_WARNING,
                 "MASTER aborted replication with an error: %s",
                 buf+1);
             goto error;
         } else if (buf[0] == '\0') {
+            // 是一个心跳包
             /* At this stage just a newline works as a PING in order to take
              * the connection live. So we refresh our last interaction
              * timestamp. */
             server.repl_transfer_lastio = server.unixtime;
             return;
+
+        // 错误的协议
         } else if (buf[0] != '$') {
             redisLog(REDIS_WARNING,"Bad protocol from MASTER, the first byte is not '$' (we received '%s'), are you sure the host and port are right?", buf);
             goto error;
         }
+        // 读取主机发送的 RDB 文件大小
         server.repl_transfer_size = strtol(buf+1,NULL,10);
         redisLog(REDIS_NOTICE,
             "MASTER <-> SLAVE sync: receiving %lld bytes from master",
@@ -914,13 +923,20 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
         replicationAbortSyncTransfer();
         return;
     }
+
+    // 记录时间
     server.repl_transfer_lastio = server.unixtime;
+
+    // 写入文件
     if (write(server.repl_transfer_fd,buf,nread) != nread) {
         redisLog(REDIS_WARNING,"Write error or short write writing to the DB dump file needed for MASTER <-> SLAVE synchronization: %s", strerror(errno));
         goto error;
     }
+
+    // 更新同步期间读取的数据
     server.repl_transfer_read += nread;
 
+    // 如果超过一定的数据量，需要将数据写入磁盘
     /* Sync data on disk from time to time, otherwise at the end of the transfer
      * we may suffer a big delay as the memory buffers are copied into the
      * actual disk. */
@@ -934,30 +950,45 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
         server.repl_transfer_last_fsync_off += sync_size;
     }
 
+    // 检测传输是否已经结束
     /* Check if the transfer is now complete */
     if (server.repl_transfer_read == server.repl_transfer_size) {
+
+        // 结束，重命名文件
         if (rename(server.repl_transfer_tmpfile,server.rdb_filename) == -1) {
             redisLog(REDIS_WARNING,"Failed trying to rename the temp DB into dump.rdb in MASTER <-> SLAVE synchronization: %s", strerror(errno));
             replicationAbortSyncTransfer();
             return;
         }
         redisLog(REDIS_NOTICE, "MASTER <-> SLAVE sync: Flushing old data");
+
+        // 提示：所连接客户端的监视键无效
         signalFlushedDb(-1);
+
+        // 清空内存数据库
         emptyDb(replicationEmptyDbCallback);
+
+        // 注销和主机连接套接字的读事件
         /* Before loading the DB into memory we need to delete the readable
          * handler, otherwise it will get called recursively since
          * rdbLoad() will call the event loop to process events from time to
          * time for non blocking loading. */
         aeDeleteFileEvent(server.el,server.repl_transfer_s,AE_READABLE);
+
+        // 从刚刚接收完成的 RDB 文件中回复数据
         redisLog(REDIS_NOTICE, "MASTER <-> SLAVE sync: Loading DB in memory");
         if (rdbLoad(server.rdb_filename) != REDIS_OK) {
             redisLog(REDIS_WARNING,"Failed trying to load the MASTER synchronization DB from disk");
             replicationAbortSyncTransfer();
             return;
         }
+
+        // 清理工作
         /* Final setup of the connected slave <- master link */
         zfree(server.repl_transfer_tmpfile);
         close(server.repl_transfer_fd);
+
+        // 设置主机信息
         server.master = createClient(server.repl_transfer_s);
         server.master->flags |= REDIS_MASTER;
         server.master->authenticated = 1;
@@ -966,6 +997,8 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
         memcpy(server.master->replrunid, server.repl_master_runid,
             sizeof(server.repl_master_runid));
         redisLog(REDIS_NOTICE, "MASTER <-> SLAVE sync: Finished with success");
+
+        // 如果未打开了 AOF 持久化，先将其关闭，再将其打开，这是为了将之前的 AOF 文件抵消掉！！！
         /* Restart the AOF subsystem now that we finished the sync. This
          * will trigger an AOF rewrite, and when done will start appending
          * to the new file. */
@@ -1309,6 +1342,7 @@ error:
     return;
 }
 
+// 连接主机
 int connectWithMaster(void) {
     int fd;
 
@@ -1319,6 +1353,7 @@ int connectWithMaster(void) {
         return REDIS_ERR;
     }
 
+    // 注册各种事件
     if (aeCreateFileEvent(server.el,fd,AE_READABLE|AE_WRITABLE,syncWithMaster,NULL) ==
             AE_ERR)
     {
@@ -1431,6 +1466,7 @@ void slaveofCommand(redisClient *c) {
     addReply(c,shared.ok);
 }
 
+// 向主机发送 ACK
 /* Send a REPLCONF ACK command to the master to inform it about the current
  * processed offset. If we are not connected with a master, the command has
  * no effects. */
@@ -1556,6 +1592,7 @@ void refreshGoodSlavesCount(void) {
     if (!server.repl_min_slaves_to_write ||
         !server.repl_min_slaves_max_lag) return;
 
+    // 计算没有 ACK 超时的从机
     listRewind(server.slaves,&li);
     while((ln = listNext(&li))) {
         redisClient *slave = ln->value;
@@ -1651,10 +1688,12 @@ int replicationScriptCacheExists(sds sha1) {
     return dictFind(server.repl_scriptcache_dict,sha1) != NULL;
 }
 
+// 管理主从连接的定时程序定时程序
 /* --------------------------- REPLICATION CRON  ----------------------------- */
 
 /* Replication cron funciton, called 1 time per second. */
 void replicationCron(void) {
+    // 判断与主机的连接是否超时
     /* Non blocking connection timeout? */
     if (server.masterhost &&
         (server.repl_state == REDIS_REPL_CONNECTING ||
@@ -1665,6 +1704,7 @@ void replicationCron(void) {
         undoConnectWithMaster();
     }
 
+    // 数据传输是否超时
     /* Bulk transfer I/O timeout? */
     if (server.masterhost && server.repl_state == REDIS_REPL_TRANSFER &&
         (time(NULL)-server.repl_transfer_lastio) > server.repl_timeout)
@@ -1673,6 +1713,7 @@ void replicationCron(void) {
         replicationAbortSyncTransfer();
     }
 
+    // 可能主从指间一段时间没有交流数据，会被判定为超时
     /* Timed out master when we are an already connected slave? */
     if (server.masterhost && server.repl_state == REDIS_REPL_CONNECTED &&
         (time(NULL)-server.master->lastinteraction) > server.repl_timeout)
@@ -1681,6 +1722,7 @@ void replicationCron(void) {
         freeClient(server.master);
     }
 
+    // 如果需要（ REDIS_REPL_CONNECT），尝试连接主机
     /* Check if we should connect to a MASTER */
     if (server.repl_state == REDIS_REPL_CONNECT) {
         redisLog(REDIS_NOTICE,"Connecting to MASTER %s:%d",
@@ -1690,6 +1732,7 @@ void replicationCron(void) {
         }
     }
 
+    // 定时程序会尝试发送 ACK
     /* Send ACK to master from time to time. */
     if (server.masterhost && server.master)
         replicationSendAck();
@@ -1705,9 +1748,12 @@ void replicationCron(void) {
 
         /* First, send PING */
         ping_argv[0] = createStringObject("PING",4);
+
+        // 向积压空间和从机发送数据？？？
         replicationFeedSlaves(server.slaves, server.slaveseldb, ping_argv, 1);
         decrRefCount(ping_argv[0]);
 
+        // 从机可能在等待主机生产 RDB 文件，这个过程需要花点时间，发送心跳
         /* Second, send a newline to all the slaves in pre-synchronization
          * stage, that is, slaves waiting for the master to create the RDB file.
          * The newline will be ignored by the slave but will refresh the
@@ -1725,6 +1771,7 @@ void replicationCron(void) {
         }
     }
 
+    // 断开超时的从机
     /* Disconnect timedout slaves. */
     if (listLength(server.slaves)) {
         listIter li;
@@ -1734,23 +1781,32 @@ void replicationCron(void) {
         while((ln = listNext(&li))) {
             redisClient *slave = ln->value;
 
+            // 在线的从机连接，跳过
             if (slave->replstate != REDIS_REPL_ONLINE) continue;
+
+            // 正在进行 PSYNC 的从机，跳过
             if (slave->flags & REDIS_PRE_PSYNC_SLAVE) continue;
+
+            // ACK 超时
             if ((server.unixtime - slave->repl_ack_time) > server.repl_timeout)
             {
                 char ip[REDIS_IP_STR_LEN];
                 int port;
 
+                // 解析从机的 hostname，为了记录信息
                 if (anetPeerToString(slave->fd,ip,sizeof(ip),&port) != -1) {
                     redisLog(REDIS_WARNING,
                         "Disconnecting timedout slave: %s:%d",
                         ip, slave->slave_listening_port);
                 }
+
+                // 清理客户端
                 freeClient(slave);
             }
         }
     }
 
+    // 如果无从机，而且存在积压空间
     /* If we have no attached slaves and there is a replication backlog
      * using memory, free it after some (configured) time. */
     if (listLength(server.slaves) == 0 && server.repl_backlog_time_limit &&
@@ -1758,6 +1814,7 @@ void replicationCron(void) {
     {
         time_t idle = server.unixtime - server.repl_no_slaves_since;
 
+        // 超出一定时间没有主机连接，释放积压空间
         if (idle > server.repl_backlog_time_limit) {
             freeReplicationBacklog();
             redisLog(REDIS_NOTICE,
@@ -1767,6 +1824,7 @@ void replicationCron(void) {
         }
     }
 
+    // ？？？
     /* If AOF is disabled and we no longer have attached slaves, we can
      * free our Replication Script Cache as there is no need to propagate
      * EVALSHA at all. */

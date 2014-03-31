@@ -1158,7 +1158,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* Close clients that need to be closed asynchronous */
     freeClientsInAsyncFreeQueue();
 
-    // 主从连接
+    // 主从连接定时程序，详见 replication.c 中的注释
     /* Replication cron function -- used to reconnect to master and
      * to detect transfer failures. */
     run_with_period(1000) replicationCron();

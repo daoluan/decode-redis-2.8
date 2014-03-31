@@ -174,6 +174,8 @@ void aof_background_fsync(int fd) {
  * at runtime using the CONFIG command. */
 void stopAppendOnly(void) {
     redisAssert(server.aof_state != REDIS_AOF_OFF);
+
+    // 会将缓存更新写入文件
     flushAppendOnlyFile(1);
     aof_fsync(server.aof_fd);
     close(server.aof_fd);

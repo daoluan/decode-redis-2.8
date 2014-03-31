@@ -731,16 +731,31 @@ struct redisServer {
     char *masterhost;               /* Hostname of master */
     int masterport;                 /* Port of master */
     int repl_timeout;               /* Timeout after N seconds of master idle */
+
+    // 主机
     redisClient *master;     /* Client that is master for this slave */
     redisClient *cached_master; /* Cached master to be reused for PSYNC. */
     int repl_syncio_timeout; /* Timeout for synchronous I/O calls */
     int repl_state;          /* Replication status if the instance is a slave */
+
+    // 传输的 RDB 文件大小
     off_t repl_transfer_size; /* Size of RDB to read from master during sync. */
+
+    // 同步期间接收的数据
     off_t repl_transfer_read; /* Amount of RDB read from master during sync. */
+
+
     off_t repl_transfer_last_fsync_off; /* Offset when we fsync-ed last time. */
+    // 从机和主机的同步套接字
     int repl_transfer_s;     /* Slave -> Master SYNC socket */
+
+    // 同步临时文件套接字
     int repl_transfer_fd;    /* Slave -> Master SYNC temp file descriptor */
+
+    // 临时文件名
     char *repl_transfer_tmpfile; /* Slave-> master SYNC temp file name */
+
+    // 上一次读的时间
     time_t repl_transfer_lastio; /* Unix time of the latest read, for timeout */
     int repl_serve_stale_data; /* Serve stale data when link is down? */
     int repl_slave_ro;          /* Slave is read only? */
