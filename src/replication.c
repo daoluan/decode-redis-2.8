@@ -1093,6 +1093,10 @@ char *sendSynchronousCommand(int fd, ...) {
  *                      the caller should fall back to SYNC.
  */
 
+// 函数返回三种状态：
+// PSYNC_CONTINUE：表示会进行部分同步，已经设置回调函数
+// PSYNC_FULLRESYNC：全同步，会下载 RDB 文件
+// PSYNC_NOT_SUPPORTED：未知
 #define PSYNC_CONTINUE 0
 #define PSYNC_FULLRESYNC 1
 #define PSYNC_NOT_SUPPORTED 2
@@ -1162,7 +1166,10 @@ int slaveTryPartialResynchronization(int fd) {
         redisLog(REDIS_NOTICE,
             "Successful partial resynchronization with master.");
         sdsfree(reply);
+
+        // 缓存主机替代现有主机，且为 PSYNC（部分同步） 做好准备c
         replicationResurrectCachedMaster(fd);
+
         return PSYNC_CONTINUE;
     }
 
@@ -1214,7 +1221,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         goto error;
     }
 
-    // 处于连接状态（也就是没有发送 RDB），发送心跳包 ping
+    // 处于连接状态（也就是没有发送 RDB），发送心跳包 PING
     /* If we were connecting, it's time to send a non blocking PING, we want to
      * make sure the master is able to reply before going into the actual
      * replication process where we have long timeouts in the order of
@@ -1231,7 +1238,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
 
-    // 接收心跳回复 pong
+    // 接收心跳回复 PONG
     /* Receive the PONG command. */
     if (server.repl_state == REDIS_REPL_RECEIVE_PONG) {
         char buf[1024];
@@ -1299,6 +1306,10 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
      * to start a full resynchronization so that we get the master run id
      * and the global offset, to try a partial resync at the next
      * reconnection attempt. */
+    // 函数返回三种状态：
+    // PSYNC_CONTINUE：表示会进行部分同步，已经设置回调函数
+    // PSYNC_FULLRESYNC：全同步，会下载 RDB 文件
+    // PSYNC_NOT_SUPPORTED：未知
     psync_result = slaveTryPartialResynchronization(fd);
     if (psync_result == PSYNC_CONTINUE) {
         redisLog(REDIS_NOTICE, "MASTER <-> SLAVE sync: Master accepted a Partial Resynchronization.");
@@ -1593,7 +1604,7 @@ void replicationDiscardCachedMaster(void) {
     server.cached_master = NULL;
 }
 
-// 缓存主机替代现有主机？？？
+// 缓存主机替代现有主机，且为 PSYNC（部分同步） 做好准备
 /* Turn the cached master into the current master, using the file descriptor
  * passed as argument as the socket for the new master.
  *
@@ -1610,7 +1621,7 @@ void replicationResurrectCachedMaster(int newfd) {
     server.master->lastinteraction = server.unixtime;
     server.repl_state = REDIS_REPL_CONNECTED;
 
-    // 注册读事件
+    // 注册读事件，回调函数 readQueryFromClient()， readQueryFromClient() 可以处理 AOF 命令
     /* Re-add to the list of clients. */
     listAddNodeTail(server.clients,server.master);
     if (aeCreateFileEvent(server.el, newfd, AE_READABLE,

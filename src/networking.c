@@ -1129,15 +1129,19 @@ void processInputBuffer(redisClient *c) {
          * this flag has been set (i.e. don't process more commands). */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY) return;
 
+        // 请求的类型，处理的过程不一样
         /* Determine request type when unknown. */
         if (!c->reqtype) {
+            // 收到数据第一个字符为 *，表示接受到的数据为 AOF 命令
             if (c->querybuf[0] == '*') {
                 c->reqtype = REDIS_REQ_MULTIBULK;
             } else {
+                // 普通的命令
                 c->reqtype = REDIS_REQ_INLINE;
             }
         }
 
+        // 两种请求类型，分开整理
         if (c->reqtype == REDIS_REQ_INLINE) {
             if (processInlineBuffer(c) != REDIS_OK) break;
         } else if (c->reqtype == REDIS_REQ_MULTIBULK) {
@@ -1146,6 +1150,7 @@ void processInputBuffer(redisClient *c) {
             redisPanic("Unknown request type");
         }
 
+        // 即使分开整理，也是统一执行
         /* Multibulk processing could see a <= 0 length. */
         if (c->argc == 0) {
             resetClient(c);
