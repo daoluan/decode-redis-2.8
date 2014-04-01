@@ -371,6 +371,8 @@ backlog 的两种情况：
     // 需要上传的数据大小
     len = server.repl_backlog_histlen - skip;
     redisLog(REDIS_DEBUG, "[PSYNC] Reply total length: %lld", len);
+
+    // 发送数据
     while(len) {
         // 剩余空间。因为是环形内存，所以要特殊处理
         long long thislen =
@@ -866,6 +868,7 @@ void replicationEmptyDbCallback(void *privdata) {
     replicationSendNewlineToMaster();
 }
 
+// 从主机接收 RDB 文件数据
 /* Asynchronously read the SYNC payload we receive from a master */
 #define REPL_MAX_WRITTEN_BEFORE_FSYNC (1024*1024*8) /* 8 MB */
 void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -1182,6 +1185,7 @@ int slaveTryPartialResynchronization(int fd) {
     return PSYNC_NOT_SUPPORTED;
 }
 
+// 连接主机 connectWithMaster() 的时候，会被注册为回调函数
 void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     char tmpfile[256], *err;
     int dfd, maxtries = 5;
@@ -1210,7 +1214,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         goto error;
     }
 
-    // 处于连接状态，发送 ping
+    // 处于连接状态（也就是没有发送 RDB），发送心跳包 ping
     /* If we were connecting, it's time to send a non blocking PING, we want to
      * make sure the master is able to reply before going into the actual
      * replication process where we have long timeouts in the order of
@@ -1227,6 +1231,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
 
+    // 接收心跳回复 pong
     /* Receive the PONG command. */
     if (server.repl_state == REDIS_REPL_RECEIVE_PONG) {
         char buf[1024];
@@ -1300,9 +1305,12 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
 
+    // 进行全同步
     /* Fall back to SYNC if needed. Otherwise psync_result == PSYNC_FULLRESYNC
      * and the server.repl_master_runid and repl_master_initial_offset are
      * already populated. */
+
+    // 未知结果，进行出错处理
     if (psync_result == PSYNC_NOT_SUPPORTED) {
         redisLog(REDIS_NOTICE,"Retrying with SYNC...");
         if (syncWrite(fd,"SYNC\r\n",6,server.repl_syncio_timeout*1000) == -1) {
@@ -1312,6 +1320,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         }
     }
 
+    // 为什么要尝试 5次？？？
     /* Prepare a suitable temp file for bulk transfer */
     while(maxtries--) {
         snprintf(tmpfile,256,
@@ -1325,6 +1334,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         goto error;
     }
 
+    // 注册读事件，回调函数 readSyncBulkPayload()， 准备读 RDB 文件
     /* Setup the non blocking download of the bulk file. */
     if (aeCreateFileEvent(server.el,fd, AE_READABLE,readSyncBulkPayload,NULL)
             == AE_ERR)
@@ -1335,12 +1345,20 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         goto error;
     }
 
+    // 设置传输 RDB 文件数据的选项
+    // 状态
     server.repl_state = REDIS_REPL_TRANSFER;
+    // RDB 文件大小
     server.repl_transfer_size = -1;
+    // 已经传输的大小
     server.repl_transfer_read = 0;
+    // 上一次同步的偏移，为的是定时写入磁盘
     server.repl_transfer_last_fsync_off = 0;
+    // 本地 RDB 文件套接字
     server.repl_transfer_fd = dfd;
+    // 上一次同步 IO 时间
     server.repl_transfer_lastio = server.unixtime;
+    // 临时文件名
     server.repl_transfer_tmpfile = zstrdup(tmpfile);
     return;
 
@@ -1517,6 +1535,7 @@ void replicationSendAck(void) {
  * It is cached into server.cached_master and flushed away using the following
  * functions. */
 
+// 会在 freeClient() 中调用，保存与主机连接的状态信息，以便进行 PSYNC
 /* This function is called by freeClient() in order to cache the master
  * client structure instead of destryoing it. freeClient() will return
  * ASAP after this function returns, so every action needed to avoid problems
@@ -1546,6 +1565,7 @@ void replicationCacheMaster(redisClient *c) {
      * replicationHandleMasterDisconnection(). */
     server.cached_master = server.master;
 
+    // 清理工作
     /* Remove the event handlers and close the socket. We'll later reuse
      * the socket of the new connection with the master during PSYNC. */
     aeDeleteFileEvent(server.el,c->fd,AE_READABLE);
@@ -1573,7 +1593,7 @@ void replicationDiscardCachedMaster(void) {
     server.cached_master = NULL;
 }
 
-// 缓存主机替代现有主机
+// 缓存主机替代现有主机？？？
 /* Turn the cached master into the current master, using the file descriptor
  * passed as argument as the socket for the new master.
  *
@@ -1697,6 +1717,7 @@ void replicationScriptCacheAdd(sds sha1) {
     int retval;
     sds key = sdsdup(sha1);
 
+    // 驱逐最旧的数据
     /* Evict oldest. */
     if (listLength(server.repl_scriptcache_fifo) == server.repl_scriptcache_size)
     {
@@ -1708,6 +1729,7 @@ void replicationScriptCacheAdd(sds sha1) {
         listDelNode(server.repl_scriptcache_fifo,ln);
     }
 
+    // 添加
     /* Add current. */
     retval = dictAdd(server.repl_scriptcache_dict,key,NULL);
     listAddNodeHead(server.repl_scriptcache_fifo,key);

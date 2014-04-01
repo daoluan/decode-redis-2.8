@@ -607,6 +607,8 @@ struct redisServer {
     int ipfd_count;             /* Used slots in ipfd[] */
     int sofd;                   /* Unix socket file descriptor */
     list *clients;              /* List of active clients */
+
+    // 异步关闭链表，一些客户端资源放放较花时间
     list *clients_to_close;     /* Clients to close asynchronously */
     list *slaves, *monitors;    /* List of slaves and MONITORs */
     redisClient *current_client; /* Current client, only used on crash report */
@@ -728,8 +730,11 @@ struct redisServer {
 
     /* Replication (slave) */
     char *masterauth;               /* AUTH with this password with master */
+    // 主机名
     char *masterhost;               /* Hostname of master */
+    // 主机端口
     int masterport;                 /* Port of master */
+    // 主机空闲时间
     int repl_timeout;               /* Timeout after N seconds of master idle */
 
     // 主机
@@ -759,6 +764,8 @@ struct redisServer {
     time_t repl_transfer_lastio; /* Unix time of the latest read, for timeout */
     int repl_serve_stale_data; /* Serve stale data when link is down? */
     int repl_slave_ro;          /* Slave is read only? */
+
+    // master 断开的时间
     time_t repl_down_since; /* Unix time at which link with master went down */
     int repl_disable_tcp_nodelay;   /* Disable TCP_NODELAY after SYNC? */
     int slave_priority;             /* Reported in INFO and used by Sentinel. */

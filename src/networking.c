@@ -666,6 +666,7 @@ void freeClient(redisClient *c) {
     /* If this is marked as current client unset it */
     if (server.current_client == c) server.current_client = NULL;
 
+    // 如果此机为从机，已经连接主机，可能需要保存主机状态信息，以便进行 PSYNC
     /* If it is our master that's beging disconnected we should make sure
      * to cache the state to try a partial resynchronization later.
      *
@@ -713,6 +714,7 @@ void freeClient(redisClient *c) {
     dictRelease(c->pubsub_channels);
     listRelease(c->pubsub_patterns);
 
+    // 关闭套接字，注销事件
     /* Close socket, unregister events, and remove list of replies and
      * accumulated arguments. */
     if (c->fd != -1) {
@@ -738,15 +740,21 @@ void freeClient(redisClient *c) {
         listDelNode(server.unblocked_clients,ln);
     }
 
+    // c 为从机，断开主从连接
     /* Master/slave cleanup Case 1:
      * we lost the connection with a slave. */
     if (c->flags & REDIS_SLAVE) {
+        // 关闭 RDB 文件
         if (c->replstate == REDIS_REPL_SEND_BULK && c->repldbfd != -1)
             close(c->repldbfd);
+
+        // 从监视/从机链表中删除
         list *l = (c->flags & REDIS_MONITOR) ? server.monitors : server.slaves;
         ln = listSearchKey(l,c);
         redisAssert(ln != NULL);
         listDelNode(l,ln);
+
+        // redis 在一段时间没有从机连接的时候会释放积压空间
         /* We need to remember the time when we started to have zero
          * attached slaves, as after some time we'll free the replication
          * backlog. */
@@ -755,6 +763,7 @@ void freeClient(redisClient *c) {
         refreshGoodSlavesCount();
     }
 
+    // c 为主机，断开主从连接
     /* Master/slave cleanup Case 2:
      * we lost the connection with the master. */
     if (c->flags & REDIS_MASTER) replicationHandleMasterDisconnection();
