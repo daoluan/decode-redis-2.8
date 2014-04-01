@@ -403,7 +403,10 @@ int masterTryPartialResynchronization(redisClient *c) {
      * via PSYNC? If runid changed this master is a different instance and
      * there is no way to continue. */
     if (strcasecmp(master_runid, server.runid)) {
-    // runid 匹配失败
+    // 当因为异常需要与主机断开连接的时候，从机会暂存主机的状态信息，以便下一次的部分同步。
+    // master_runid 是从机提供一个因缓存主机的 runid，
+    // server.runid 是本机（主机）的 runid。
+    // 匹配失败，说明是本机（主机）不是从机缓存的主机，这时候不能进行部分同步，只能进行全同步
 
         // "?" 表示从机要求全同步
         /* Run id "?" is used by slaves that want to force a full resync. */
@@ -426,6 +429,7 @@ int masterTryPartialResynchronization(redisClient *c) {
         psync_offset < server.repl_backlog_off ||  /*无效的 psync_offset*/
                                                     /*psync_offset 越界*/
         psync_offset > (server.repl_backlog_off + server.repl_backlog_histlen))
+    // 经检测，不满足部分同步的条件，转而进行全同步
     {
         redisLog(REDIS_NOTICE,
             "Unable to partial resync with the slave for lack of backlog (Slave request was: %lld).", psync_offset);
@@ -440,11 +444,18 @@ int masterTryPartialResynchronization(redisClient *c) {
      * 1) Set client state to make it a slave.
      * 2) Inform the client we can continue with +CONTINUE
      * 3) Send the backlog data (from the offset to the end) to the slave. */
+
+    // 将连接的客户端标记为从机
     c->flags |= REDIS_SLAVE;
+    // #define REDIS_REPL_ONLINE 9 /* RDB file transmitted, sending just updates. */
+    // 表示进行部分同步
     c->replstate = REDIS_REPL_ONLINE;
+    // 更新 ack 的时间
     c->repl_ack_time = server.unixtime;
+    // 添加入从机链表
     listAddNodeTail(server.slaves,c);
 
+    // 回复从机，告诉从机可以进行部分同步，从机收到后会做相关的准备
     /* We can't use the connection buffers since they are used to accumulate
      * new commands at this stage. But we are sure the socket send buffer is
      * emtpy so this write will never fail actually. */
@@ -454,6 +465,7 @@ int masterTryPartialResynchronization(redisClient *c) {
         return REDIS_OK;
     }
 
+    // 向从机写积压空间中的数据，积压空间存储有「更新缓存」
     psync_len = addReplyReplicationBacklog(c,psync_offset);
 
     redisLog(REDIS_NOTICE,
@@ -475,7 +487,7 @@ need_full_resync:
 
     if (server.repl_backlog == NULL) psync_offset++;
 
-    // 通知从机
+    // 通知从机，返回信息包括 runid 和同步偏移量
     /* Again, we can't use the connection buffers (see above). */
     buflen = snprintf(buf,sizeof(buf),"+FULLRESYNC %s %lld\r\n",
                       server.runid,psync_offset);
@@ -1122,6 +1134,7 @@ int slaveTryPartialResynchronization(int fd) {
         memcpy(psync_offset,"-1",3);
     }
 
+    // 向主机发出命令
     /* Issue the PSYNC command */
     reply = sendSynchronousCommand(fd,"PSYNC",psync_runid,psync_offset,NULL);
 
@@ -1306,6 +1319,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
      * to start a full resynchronization so that we get the master run id
      * and the global offset, to try a partial resync at the next
      * reconnection attempt. */
+
     // 函数返回三种状态：
     // PSYNC_CONTINUE：表示会进行部分同步，已经设置回调函数
     // PSYNC_FULLRESYNC：全同步，会下载 RDB 文件
