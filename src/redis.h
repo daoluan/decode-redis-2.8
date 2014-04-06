@@ -449,35 +449,69 @@ typedef struct readyList {
 /* With multiplexing we need to take per-client state.
  * Clients are taken in a liked list. */
 typedef struct redisClient {
+    // 连接的套接字
     int fd;
+
     redisDb *db;
+
+    // 数据库序号上下文
     int dictid;
+
+    // 客户端名称，可以被设置
     robj *name;             /* As set by CLIENT SETNAME */
     sds querybuf;
     size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size */
+
+    // 参数个数
     int argc;
+
+    // 参数
     robj **argv;
+
+    // 命令对应的执行函数。在解析命令的时候会被赋值
     struct redisCommand *cmd, *lastcmd;
+
+    // 请求命令的类型
     int reqtype;
     int multibulklen;       /* number of multi bulk arguments left to read */
     long bulklen;           /* length of bulk argument in multi bulk request */
+
+    // 回复数据、
     list *reply;
     unsigned long reply_bytes; /* Tot bytes of objects in reply list */
     int sentlen;            /* Amount of bytes already sent in the current
                                buffer or object being sent. */
+
+    // 客户端创建时间
     time_t ctime;           /* Client creation time */
     time_t lastinteraction; /* time of the last interaction, used for timeout */
     time_t obuf_soft_limit_reached_time;
+
+    // 客户端类型
     int flags;              /* REDIS_SLAVE | REDIS_MONITOR | REDIS_MULTI ... */
+
+    // 是否已经认证
     int authenticated;      /* when requirepass is non-NULL */
+
+    // 和从机连接的状态
     int replstate;          /* replication state if this is a slave */
+
+    // RDB 文件描述符
     int repldbfd;           /* replication DB file descriptor */
+    // RDB 文件偏移
     off_t repldboff;        /* replication DB file offset */
+    // RDB 文件大小
     off_t repldbsize;       /* replication DB file size */
     long long reploff;      /* replication offset if this is our master */
     long long repl_ack_off; /* replication ack offset, if this is a slave */
+
+    // ack 时间
     long long repl_ack_time;/* replication ack time, if this is a slave */
+
+    // master id，标记主机的一串字符
     char replrunid[REDIS_RUN_ID_SIZE+1]; /* master run id if this is a master */
+
+    // 从机监听的端口
     int slave_listening_port; /* As configured with: SLAVECONF listening-port */
     multiState mstate;      /* MULTI/EXEC state */
     blockingState bpop;   /* blocking state */
@@ -486,10 +520,12 @@ typedef struct redisClient {
     // 用户感兴趣的频道。
     // 这个参数几乎只用来维护客户端订阅了多少频道这个数据
     dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
+
     // 用户感兴趣的模式
     // 这个参数几乎只用来维护客户端订阅了多少模式这个数据
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
 
+    // 回复缓存？？？ 和 reply 有什么不同？？？
     /* Response buffer */
     int bufpos;
     char buf[REDIS_REPLY_CHUNK_BYTES];
@@ -615,6 +651,7 @@ struct redisServer {
     char neterr[ANET_ERR_LEN];  /* Error buffer for anet.c */
 
     /* RDB / AOF loading information */
+    // 正在加载数据
     int loading;                /* We are loading data from disk if true */
     off_t loading_total_bytes;
     off_t loading_loaded_bytes;
@@ -711,19 +748,37 @@ struct redisServer {
     int syslog_facility;            /* Syslog facility */
 
     /* Replication (master) */
+    // 最近一次使用（访问）的数据集
     int slaveseldb;                 /* Last SELECTed DB in replication output */
     long long master_repl_offset;   /* Global replication offset */
+
+    // 主从连接心跳频率
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
+
+    // 积压空间指针
     char *repl_backlog;             /* Replication backlog for partial syncs */
+
+    // 积压空间大小
     long long repl_backlog_size;    /* Backlog circular buffer size */
+
+    // 积压空间中写入的新数据的大小
     long long repl_backlog_histlen; /* Backlog actual data length */
+
+    // 下一次向积压空间写入数据的起始位置
     long long repl_backlog_idx;     /* Backlog circular buffer current offset */
+
+    // 积压数据的起始位置，是一个宏观值
     long long repl_backlog_off;     /* Replication offset of first byte in the
                                        backlog buffer. */
+
+    // 积压空间有效时间
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
                                        gets released. */
+
+    // 主从连接最后一次通信时间
     time_t repl_no_slaves_since;    /* We have no slaves since that time.
                                        Only valid if server.slaves len is 0. */
+
     int repl_min_slaves_to_write;   /* Min number of slaves to write. */
     int repl_min_slaves_max_lag;    /* Max lag of <count> slaves to write. */
     int repl_good_slaves_count;     /* Number of slaves with lag <= max_lag. */
@@ -741,6 +796,8 @@ struct redisServer {
     redisClient *master;     /* Client that is master for this slave */
     redisClient *cached_master; /* Cached master to be reused for PSYNC. */
     int repl_syncio_timeout; /* Timeout for synchronous I/O calls */
+
+    // 作为从机的状态
     int repl_state;          /* Replication status if the instance is a slave */
 
     // 传输的 RDB 文件大小
@@ -845,6 +902,8 @@ typedef int *redisGetKeysProc(struct redisCommand *cmd, robj **argv, int argc, i
 struct redisCommand {
     char *name;
     redisCommandProc *proc;
+
+    // 命令参数个数
     int arity;
     char *sflags; /* Flags as string representation, one char per flag. */
     int flags;    /* The actual flags, obtained from the 'sflags' field. */

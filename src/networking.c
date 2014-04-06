@@ -169,6 +169,7 @@ int _addReplyToBuffer(redisClient *c, char *s, size_t len) {
     // 剩余可用的空间
     size_t available = sizeof(c->buf)-c->bufpos;
 
+    // 已经被标记为尽快结束连接，则丢弃数据，尽快返回
     if (c->flags & REDIS_CLOSE_AFTER_REPLY) return REDIS_OK;
 
     // 如果在回复列表上还有数据，则不能往静态回复数据空间添加任何的数据
@@ -176,7 +177,7 @@ int _addReplyToBuffer(redisClient *c, char *s, size_t len) {
      * add anything more to the static buffer. */
     if (listLength(c->reply) > 0) return REDIS_ERR;
 
-    // 数据空间可能不够
+    // 数据空间可能不够，则返回错误
     /* Check that the buffer has enough space available for this string. */
     if (len > available) return REDIS_ERR;
 
@@ -1129,28 +1130,42 @@ void processInputBuffer(redisClient *c) {
          * this flag has been set (i.e. don't process more commands). */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY) return;
 
+        // 1）普通命令：set name Jhon
+        // 2）AOF 命令：
+        //         $3
+        //         *3
+        //         SET
+        //         *4
+        //         name
+        //         *4
+        //         Jhon
+
         // 请求的类型，处理的过程不一样
         /* Determine request type when unknown. */
         if (!c->reqtype) {
-            // 收到数据第一个字符为 *，表示接受到的数据为 AOF 命令
+            // 1）收到数据第一个字符为 *，表示接受到的数据为 AOF 命令
             if (c->querybuf[0] == '*') {
                 c->reqtype = REDIS_REQ_MULTIBULK;
+
+            // 2）普通的命令
             } else {
-                // 普通的命令
                 c->reqtype = REDIS_REQ_INLINE;
             }
         }
 
-        // 两种请求类型，分开整理
+        // 两种请求类型，分开整理（普通命令和 AOF 命令）
         if (c->reqtype == REDIS_REQ_INLINE) {
+            // 普通命令
             if (processInlineBuffer(c) != REDIS_OK) break;
+
+            // AOF 命令，会将 AOF 转化为普通命令
         } else if (c->reqtype == REDIS_REQ_MULTIBULK) {
             if (processMultibulkBuffer(c) != REDIS_OK) break;
         } else {
+            // 未知
             redisPanic("Unknown request type");
         }
 
-        // 即使分开整理，也是统一执行
         /* Multibulk processing could see a <= 0 length. */
         if (c->argc == 0) {
             resetClient(c);

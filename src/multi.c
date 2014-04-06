@@ -52,6 +52,7 @@ void freeClientMultiState(redisClient *c) {
     zfree(c->mstate.commands);
 }
 
+// 向多命令队列中添加命令
 /* Add a new command into the MULTI commands queue */
 void queueMultiCommand(redisClient *c) {
     // multiCmd 是多命令队列结构
@@ -68,12 +69,13 @@ void queueMultiCommand(redisClient *c) {
     mc->argc = c->argc;
     mc->argv = zmalloc(sizeof(robj*)*c->argc);
     memcpy(mc->argv,c->argv,sizeof(robj*)*c->argc);
-    for (j = 0; j < c->argc; j++)
+    for (j = 0; j < c->argc; j++) // 添加引用
         incrRefCount(mc->argv[j]);
 
     c->mstate.count++;
 }
 
+// 取消事务
 void discardTransaction(redisClient *c) {
     freeClientMultiState(c);
     initClientMultiState(c);
@@ -116,6 +118,7 @@ void execCommandPropagateMulti(redisClient *c) {
     decrRefCount(multistring);
 }
 
+// 执行事务内的所有命令
 void execCommand(redisClient *c) {
     int j;
     robj **orig_argv;
@@ -123,11 +126,13 @@ void execCommand(redisClient *c) {
     struct redisCommand *orig_cmd;
     int must_propagate = 0; /* Need to propagate MULTI/EXEC to AOF / slaves? */
 
+    // 必须设置多命令标记
     if (!(c->flags & REDIS_MULTI)) {
         addReplyError(c,"EXEC without MULTI");
         return;
     }
 
+    // 停止执行事务命令的情况的情况
     /* Check if we need to abort the EXEC because:
      * 1) Some WATCHed key was touched.
      * 2) There was a previous error while queueing commands.
@@ -141,6 +146,7 @@ void execCommand(redisClient *c) {
         goto handle_monitor;
     }
 
+    // 执行队列中的所有命令
     /* Exec all the queued commands */
     unwatchAllKeys(c); /* Unwatch ASAP otherwise we'll waste CPU cycles */
     orig_argv = c->argv;

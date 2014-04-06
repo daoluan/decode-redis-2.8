@@ -1977,6 +1977,7 @@ void call(redisClient *c, int flags) {
  * other operations can be performed by the caller. Otherwise
  * if 0 is returned the client was destroyed (i.e. after QUIT). */
 int processCommand(redisClient *c) {
+    // quit 命令，设置 REDIS_CLOSE_AFTER_REPLY，当所有数据被回复后关闭连接
     /* The QUIT command is handled separately. Normal command procs will
      * go through checking for replication and QUIT will cause trouble
      * when FORCE_REPLICATION is enabled and would be implemented in
@@ -1992,12 +1993,14 @@ int processCommand(redisClient *c) {
      * such as wrong arity, bad command name and so forth. */
     c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
 
-    // 没有找到
+    // 没有找到命令
     if (!c->cmd) {
         flagTransaction(c);
         addReplyErrorFormat(c,"unknown command '%s'",
             (char*)c->argv[0]->ptr);
         return REDIS_OK;
+
+    // 参数个数不符合
     } else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) ||
                (c->argc < c->cmd->arity)) {
         flagTransaction(c);
@@ -2006,7 +2009,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
-    // 验证？
+    // 验证？？？
     /* Check if the user is authenticated */
     if (server.requirepass && !c->authenticated && c->cmd->proc != authCommand)
     {
@@ -2029,6 +2032,7 @@ int processCommand(redisClient *c) {
         }
     }
 
+    // 不允许写操作的情况：持久化操作出现错误
     /* Don't accept write commands if there are problems persisting on disk
      * and if this is a master instance. */
     if (server.stop_writes_on_bgsave_err &&
@@ -2043,6 +2047,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
+    // 不允许写操作的情况：从机连接状况不佳
     /* Don't accept write commands if there are not enough good slaves and
      * user configured the min-slaves-to-write option. */
     if (server.repl_min_slaves_to_write &&
@@ -2055,6 +2060,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
+    // 不允许写操作的情况：此为从机，且从机只读
     /* Don't accept write commands if this is a read only slave. But
      * accept write commands if this is our master. */
     if (server.masterhost && server.repl_slave_ro &&
@@ -2065,6 +2071,8 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
+    // 在订阅发布模式下，才允许处理 SUBSCRIBE 或者 UNSUBSCRIBE 命令
+    // 从下面的检测条件可以看出：只要存在 redisClient.pubsub_channels 或者 redisClient.pubsub_patterns，就代表处于订阅发布模式下
     /* Only allow SUBSCRIBE and UNSUBSCRIBE in the context of Pub/Sub */
     if ((dictSize(c->pubsub_channels) > 0 || listLength(c->pubsub_patterns) > 0)
         &&
@@ -2076,6 +2084,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
+    // ？？？
     /* Only allow INFO and SLAVEOF when slave-serve-stale-data is no and
      * we are a slave with a broken link with master. */
     if (server.masterhost && server.repl_state != REDIS_REPL_CONNECTED &&
@@ -2087,6 +2096,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
+    // 一些命令不允许正在加载本地数据的时候执行
     /* Loading DB? Return an error if the command has not the
      * REDIS_CMD_LOADING flag. */
     if (server.loading && !(c->cmd->flags & REDIS_CMD_LOADING)) {
@@ -2094,6 +2104,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
+    // lua 脚本太慢？？？
     /* Lua script too slow? Only allow a limited number of commands. */
     if (server.lua_timedout &&
           c->cmd->proc != authCommand &&
@@ -2110,7 +2121,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
-    // 真正执行命令。注意，如果是设置了多命令模式，那么不是直接执行命令，而是让命令入队
+    // 加入命令队列的情况
     /* Exec the command */
     if (c->flags & REDIS_MULTI &&
         c->cmd->proc != execCommand && c->cmd->proc != discardCommand &&
@@ -2118,6 +2129,8 @@ int processCommand(redisClient *c) {
     {
         queueMultiCommand(c);
         addReply(c,shared.queued);
+
+    // 真正执行命令。注意，如果是设置了多命令模式，那么不是直接执行命令，而是让命令入队
     } else {
         call(c,REDIS_CALL_FULL);
         if (listLength(server.ready_keys))
