@@ -201,11 +201,17 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
                 dictid_len, llstr));
         }
 
+        // 这里可能会有疑问：为什么把数据添加入积压空间，又把数据分发给所有的从机？
+        // 为什么不仅仅将数据分发给所有从机呢？
+        // 因为有一些从机会因特殊情况（？？？）与主机断开连接，注意从机断开前有暂存
+        // 主机的状态信息，因此这些断开的从机就没有及时收到更新的数据。redis 为了让
+        // 断开的从机在下次连接后能够获取更新数据，将更新数据加入了积压空间。
+
         // 将 SELECT 命令对应的 redis 对象数据添加到积压空间
         /* Add the SELECT command into the backlog. */
         if (server.repl_backlog) feedReplicationBacklogWithObject(selectcmd);
 
-        // 将数据发送给所有的从机
+        // 将数据分发所有的从机
         /* Send it to slaves. */
         listRewind(slaves,&li);
         while((ln = listNext(&li))) {
@@ -674,7 +680,7 @@ void syncCommand(redisClient *c) {
     return;
 }
 
-// REPLCONF 命令处理函数。用于从机
+// REPLCONF 命令处理函数。用于从机给主机发送监听端口
 /* REPLCONF <option> <value> <option> <value> ...
  * This command is used by a slave in order to configure the replication
  * process before starting it with the SYNC command.
@@ -1183,10 +1189,13 @@ int slaveTryPartialResynchronization(int fd) {
     server.repl_master_initial_offset = -1;
 
     if (server.cached_master) {
+    // 缓存了上一次与主机连接的信息，可以尝试进行部分同步，减少数据传输
         psync_runid = server.cached_master->replrunid;
         snprintf(psync_offset,sizeof(psync_offset),"%lld", server.cached_master->reploff+1);
         redisLog(REDIS_NOTICE,"Trying a partial resynchronization (request %s:%s).", psync_runid, psync_offset);
     } else {
+    // 未缓存上一次与主机连接的信息，进行全同步
+    // psync ? -1 可以获取主机的 master_runid
         redisLog(REDIS_NOTICE,"Partial resynchronization not possible (no cached master)");
         psync_runid = "?";
         memcpy(psync_offset,"-1",3);
