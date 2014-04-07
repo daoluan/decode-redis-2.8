@@ -245,6 +245,7 @@
 
 /* Slave replication state - from the point of view of the slave. */
 #define REDIS_REPL_NONE 0 /* No active replication */
+// 表示需要连接主机
 #define REDIS_REPL_CONNECT 1 /* Must connect to master */
 #define REDIS_REPL_CONNECTING 2 /* Connecting to master */
 #define REDIS_REPL_RECEIVE_PONG 3 /* Wait for PING reply */
@@ -613,14 +614,20 @@ redis 服务器配置参数
  *----------------------------------------------------------------------------*/
 struct redisServer {
     /* General */
+    // 配置文件名
     char *configfile;           /* Absolute config file path, or NULL */
+
+    // redis 服务器定时程序执行频率
     int hz;                     /* serverCron() calls frequency in hertz */
 
     // redis 数据库，很有意思
     redisDb *db;
 
+    // 命令表
     dict *commands;             /* Command table */
     dict *orig_commands;        /* Command table before command renaming. */
+
+    // 事件中心
     aeEventLoop *el;
     unsigned lruclock:22;       /* Clock incrementing every minute, for LRU */
     unsigned lruclock_padding:10;
@@ -629,14 +636,23 @@ struct redisServer {
     char *requirepass;          /* Pass for AUTH command, or NULL */
     char *pidfile;              /* PID file path */
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
+
+    // 定时程序执行次数
     int cronloops;              /* Number of times the cron function run */
+
+    // 不同 redis 服务器的标记
     char runid[REDIS_RUN_ID_SIZE+1];  /* ID always different at every exec. */
     int sentinel_mode;          /* True if this instance is a Sentinel. */
 
     /* Networking */
+    // TCP 监听端口
     int port;                   /* TCP listening port */
+
+    // 绑定地址
     char *bindaddr[REDIS_BINDADDR_MAX]; /* Addresses we should bind to */
     int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
+
+    // UNIX 域套接字地址
     char *unixsocket;           /* UNIX socket path */
     mode_t unixsocketperm;      /* UNIX socket permission */
     int ipfd[REDIS_BINDADDR_MAX]; /* TCP socket file descriptors */
@@ -784,6 +800,7 @@ struct redisServer {
     int repl_good_slaves_count;     /* Number of slaves with lag <= max_lag. */
 
     /* Replication (slave) */
+    // 主从认证密码
     char *masterauth;               /* AUTH with this password with master */
     // 主机名
     char *masterhost;               /* Hostname of master */
@@ -794,7 +811,11 @@ struct redisServer {
 
     // 主机
     redisClient *master;     /* Client that is master for this slave */
+
+    // 缓存的主机
     redisClient *cached_master; /* Cached master to be reused for PSYNC. */
+
+    // 同步网络 IO 超时时间
     int repl_syncio_timeout; /* Timeout for synchronous I/O calls */
 
     // 作为从机的状态
@@ -806,8 +827,9 @@ struct redisServer {
     // 同步期间接收的数据
     off_t repl_transfer_read; /* Amount of RDB read from master during sync. */
 
-
+    // 已经写入磁盘的数据偏移量
     off_t repl_transfer_last_fsync_off; /* Offset when we fsync-ed last time. */
+
     // 从机和主机的同步套接字
     int repl_transfer_s;     /* Slave -> Master SYNC socket */
 

@@ -637,6 +637,7 @@ static void freeClientArgv(redisClient *c) {
     c->cmd = NULL;
 }
 
+// 断开所有从机连接，在链式连接中用到
 /* Close all the slaves connections. This is useful in chained replication
  * when we resync with our own master and want to force all our slaves to
  * resync with us as well. */
@@ -653,11 +654,14 @@ void replicationHandleMasterDisconnection(void) {
     server.master = NULL;
     server.repl_state = REDIS_REPL_CONNECT;
     server.repl_down_since = server.unixtime;
+
     /* We lost connection with our master, force our slaves to resync
      * with us as well to load the new data set.
      *
      * If server.masterhost is NULL the user called SLAVEOF NO ONE so
      * slave resync is not needed. */
+     // SLAVEOF
+     // 该命令用于修改SLAVE服务器的复制设置。如果一个Redis服务器已经处于SLAVE状态，SLAVEOF NO ONE命令将关闭当前服务器的被复制状态，与此同时将该服务器切换到MASTER状态。该命令的参数将指定MASTER服务器的监听IP和端口。还有一种情况是，当前服务器已经是另外一台MASTER的SLAVE了，在执行该命令后，当前服务器将终止和之前MASTER之间的复制关系，而将成为新MASTER的SLAVE，之前MASTER中的数据也将被清空，改为新MASTER中的数据。然而如果在当前SLAVE服务器上执行的是SLAVEOF NO ONE命令，那么该服务器只是中断与当前MASTER的复制关系，并升级为独立的MASTER，其中的数据也不会被清空。
     if (server.masterhost != NULL) disconnectSlaves();
 }
 
