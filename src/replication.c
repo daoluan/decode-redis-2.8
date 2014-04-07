@@ -1324,6 +1324,9 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (server.repl_state == REDIS_REPL_RECEIVE_PONG) {
         char buf[1024];
 
+        // 注销读事件，因为我从机收到来自主机的 PONG，接下来和主机的数据交流没有
+        // 问题。
+        // 下面进行同步的时候，会再次注册读事件，但回调函数不同
         /* Delete the readable event, we no longer need it now that there is
          * the PING reply to read. */
         aeDeleteFileEvent(server.el,fd,AE_READABLE);
@@ -1396,7 +1399,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     // 函数返回三种状态：
     // PSYNC_CONTINUE：表示会进行部分同步，在 slaveTryPartialResynchronization()
-    //                  中已经设置回调函数
+                     // 中已经设置回调函数 readQueryFromClient()
     // PSYNC_FULLRESYNC：全同步，会下载 RDB 文件
     // PSYNC_NOT_SUPPORTED：未知
     psync_result = slaveTryPartialResynchronization(fd);
