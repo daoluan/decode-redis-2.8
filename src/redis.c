@@ -1844,7 +1844,7 @@ struct redisCommand *lookupCommandOrOriginal(sds name) {
     return cmd;
 }
 
-// 往 AOF 和从机传播指定命令
+// 向 AOF 和从机发布数据更新
 /* Propagate the specified command (in the context of the specified database id)
  * to AOF and Slaves.
  *
@@ -1856,11 +1856,11 @@ struct redisCommand *lookupCommandOrOriginal(sds name) {
 void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
                int flags)
 {
-    // AOF 策略需要打开，且设置 AOF 传播标记
+    // AOF 策略需要打开，且设置 AOF 传播标记，将更新发布给本地文件
     if (server.aof_state != REDIS_AOF_OFF && flags & REDIS_PROPAGATE_AOF)
         feedAppendOnlyFile(cmd,dbid,argv,argc);
 
-    // 设置了从机传播标记
+    // 设置了从机传播标记，将更新发布给从机
     if (flags & REDIS_PROPAGATE_REPL)
         replicationFeedSlaves(server.slaves,dbid,argv,argc);
 }

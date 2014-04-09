@@ -797,6 +797,7 @@ void freeClient(redisClient *c) {
 void freeClientAsync(redisClient *c) {
     if (c->flags & REDIS_CLOSE_ASAP) return;
     c->flags |= REDIS_CLOSE_ASAP;
+    // 添加到待关闭队列
     listAddNodeTail(server.clients_to_close,c);
 }
 

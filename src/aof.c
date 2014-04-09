@@ -86,7 +86,7 @@ unsigned long aofRewriteBufferSize(void) {
     return size;
 }
 
-// 此函数只由 feedAppendOnlyFile() 调用
+// 将数据更新记录写入 server.aof_rewrite_buf_blocks，此函数只由 feedAppendOnlyFile() 调用
 /* Append data to the AOF rewrite buffer, allocating new blocks if needed. */
 void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
     // 尾插法
@@ -131,7 +131,7 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
     }
 }
 
-// 将累积的更新缓存同步到磁盘
+// 将累积的更新缓存 server.aof_rewrite_buf_blocks 同步到磁盘
 /* Write the buffer (possibly composed of multiple blocks) into the specified
  * fd. If no short write or any other error happens -1 is returned,
  * otherwise the number of bytes written is returned. */
@@ -234,7 +234,7 @@ int startAppendOnly(void) {
     return REDIS_OK;
 }
 
-// 同步磁盘；将所有累积的更新写入磁盘
+// 同步磁盘；将所有累积的更新 server.aof_buf 写入磁盘
 /* Write the append only file buffer on disk.
  *
  * Since we are required to write the AOF before replying to the client,
@@ -333,8 +333,7 @@ void flushAppendOnlyFile(int force) {
     // 更新 AOF 文件的大小
     server.aof_current_size += nwritten;
 
-/*
-    当 server.aof_buf 足够小,重新利用空间，防止频繁的内存分配。
+    /*当 server.aof_buf 足够小,重新利用空间，防止频繁的内存分配。
     相反，当 server.aof_buf 占据大量的空间，采取的策略是释放空间，可见 redis 对内存很敏感。*/
     /* Re-use AOF buffer when it is small enough. The maximum comes from the
      * arena size of 4k minus some overhead (but is otherwise arbitrary). */
@@ -351,7 +350,7 @@ void flushAppendOnlyFile(int force) {
         (server.aof_child_pid != -1 || server.rdb_child_pid != -1))
             return;
 
-    // 执行同步操作，写入磁盘
+    // sync,写入磁盘
     /* Perform the fsync if needed. */
     if (server.aof_fsync == AOF_FSYNC_ALWAYS) {
         /* aof_fsync is defined as fdatasync() for Linux in order to avoid
@@ -430,7 +429,7 @@ sds catAppendOnlyExpireAtCommand(sds buf, struct redisCommand *cmd, robj *key, r
     return buf;
 }
 
-// 将命令追写到 AOF 缓存中
+// 将数据更新记录到 AOF 缓存中
 void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc) {
     sds buf = sdsempty();
     robj *tmpargv[3];
