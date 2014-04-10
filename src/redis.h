@@ -499,11 +499,15 @@ typedef struct redisClient {
 
     // RDB 文件描述符
     int repldbfd;           /* replication DB file descriptor */
+
     // RDB 文件偏移
     off_t repldboff;        /* replication DB file offset */
+
     // RDB 文件大小
     off_t repldbsize;       /* replication DB file size */
+
     long long reploff;      /* replication offset if this is our master */
+
     long long repl_ack_off; /* replication ack offset, if this is a slave */
 
     // ack 时间
@@ -766,6 +770,8 @@ struct redisServer {
     /* Replication (master) */
     // 最近一次使用（访问）的数据集
     int slaveseldb;                 /* Last SELECTed DB in replication output */
+
+    // 全局的数据同步偏移量
     long long master_repl_offset;   /* Global replication offset */
 
     // 主从连接心跳频率

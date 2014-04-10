@@ -1881,7 +1881,7 @@ void forceCommandPropagation(redisClient *c, int flags) {
     if (flags & REDIS_PROPAGATE_AOF) c->flags |= REDIS_FORCE_AOF;
 }
 
- // call() 函数是执行命令的核心函数，真正执行命令的地方
+// call() 函数是执行命令的核心函数，真正执行命令的地方
 /* Call() is the core of Redis execution of a command */
 void call(redisClient *c, int flags) {
     long long dirty, start = ustime(), duration;
@@ -1900,7 +1900,7 @@ void call(redisClient *c, int flags) {
     c->flags &= ~(REDIS_FORCE_AOF|REDIS_FORCE_REPL);
     redisOpArrayInit(&server.also_propagate);
 
-    // 脏数据标记
+    // 脏数据标记，数据是否被修改
     dirty = server.dirty;
 
     // 执行命令对应的函数
@@ -1934,15 +1934,22 @@ void call(redisClient *c, int flags) {
         c->cmd->calls++;
     }
 
-    // 将客户端请求的命令传播给 AOF 和从机
+    // 将客户端请求的数据修改记录传播给 AOF 和从机
     /* Propagate the command into the AOF and replication link */
     if (flags & REDIS_CALL_PROPAGATE) {
         int flags = REDIS_PROPAGATE_NONE;
 
+        // 强制主从复制
         if (c->flags & REDIS_FORCE_REPL) flags |= REDIS_PROPAGATE_REPL;
+
+        // 强制 AOF 持久化
         if (c->flags & REDIS_FORCE_AOF) flags |= REDIS_PROPAGATE_AOF;
+
+        // 数据被修改
         if (dirty)
             flags |= (REDIS_PROPAGATE_REPL | REDIS_PROPAGATE_AOF);
+
+        // 传播数据修改记录
         if (flags != REDIS_PROPAGATE_NONE)
             propagate(c->cmd,c->db->id,c->argv,c->argc,flags);
     }

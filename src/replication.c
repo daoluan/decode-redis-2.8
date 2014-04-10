@@ -350,6 +350,7 @@ long long addReplyReplicationBacklog(redisClient *c, long long offset) {
 
     redisLog(REDIS_DEBUG, "[PSYNC] Slave request offset: %lld", offset);
 
+    // 需要同步的更新记录为空
     if (server.repl_backlog_histlen == 0) {
         redisLog(REDIS_DEBUG, "[PSYNC] Backlog history len is zero");
         return 0;
@@ -418,7 +419,7 @@ backlog 的两种情况：
     return server.repl_backlog_histlen - skip;
 }
 
-// PSYNC 命令处理函数
+// 主机尝试是否能进行部分同步
 /* This function handles the PSYNC command from the point of view of a
  * master receiving a request for partial resynchronization.
  *
@@ -461,7 +462,9 @@ int masterTryPartialResynchronization(redisClient *c) {
 
     // 部分同步失败的情况
     if (!server.repl_backlog || /*不存在积压空间*/
-        psync_offset < server.repl_backlog_off ||  /*无效的 psync_offset*/
+        psync_offset < server.repl_backlog_off ||  /*psync_offset 太过小，
+                                                    即从机错过太多更新记录，
+                                                    安全起见，实行全同步*/
                                                     /*psync_offset 越界*/
         psync_offset > (server.repl_backlog_off + server.repl_backlog_histlen))
     // 经检测，不满足部分同步的条件，转而进行全同步
@@ -541,7 +544,7 @@ need_full_resync:
     return REDIS_ERR;
 }
 
-// SYNC 和 PSYNC 命令处理函数
+// 主机 SYNC 和 PSYNC 命令处理函数，会尝试进行部分同步和全同步
 /* SYNC ad PSYNC command implemenation. */
 void syncCommand(redisClient *c) {
     // 客户端已经被标记为从机了，同步工作已经开展，则忽略 SYNC 命令
@@ -569,7 +572,7 @@ void syncCommand(redisClient *c) {
 
     redisLog(REDIS_NOTICE,"Slave asks for synchronization");
 
-
+    // 尝试部分同步
     /* Try a partial resynchronization if this is a PSYNC command.
      * If it fails, we continue with usual full resynchronization, however
      * when this happens masterTryPartialResynchronization() already
@@ -601,7 +604,7 @@ void syncCommand(redisClient *c) {
         c->flags |= REDIS_PRE_PSYNC_SLAVE;
     }
 
-    // 开始执行全同步
+    // 执行全同步：
     /* Full resynchronization. */
     server.stat_sync_full++;
 
@@ -609,7 +612,7 @@ void syncCommand(redisClient *c) {
      * in progress, or if it is required to start one */
     if (server.rdb_child_pid != -1) {
     /*  存在 BGSAVE 后台进程。
-        1.如果 master 所连接的所有从机 slaves 当中有存在 REDIS_REPL_WAIT_BGSAVE_END 的从机，那么将从机 c 设置为 REDIS_REPL_WAIT_BGSAVE_END；
+        1.如果 master 现有所连接的所有从机 slaves 当中有存在 REDIS_REPL_WAIT_BGSAVE_END 的从机，那么将从机 c 设置为 REDIS_REPL_WAIT_BGSAVE_END；
         2.否则，设置为 REDIS_REPL_WAIT_BGSAVE_START*/
 
         /* Ok a background save is in progress. Let's check if it is a good
@@ -723,6 +726,8 @@ void replconfCommand(redisClient *c) {
                 return;
             if (offset > c->repl_ack_off)
                 c->repl_ack_off = offset;
+
+            // 更新 ACK 时间
             c->repl_ack_time = server.unixtime;
             /* Note: this command does not reply anything! */
             return;
@@ -859,7 +864,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr) {
             // 如果之前有注册写事件，取消
             aeDeleteFileEvent(server.el,slave->fd,AE_WRITABLE);
 
-            // 注册新的写事件
+            // 注册新的写事件,sendBulkToSlave() 传输 RDB 文件
             if (aeCreateFileEvent(server.el, slave->fd, AE_WRITABLE, sendBulkToSlave, slave) == AE_ERR) {
                 freeClient(slave);
                 continue;
@@ -867,7 +872,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr) {
         }
     }
 
-    // 有 slave 要求进行 BGSAVE 则启动。
+    // startbgsave == REDIS_ERR 表示 BGSAVE 失败，再一次进行 BGSAVE 尝试
     if (startbgsave) {
         /* Since we are starting a new background save for one or more slaves,
          * we flush the Replication Script Cache to use EVAL to propagate every
@@ -1408,7 +1413,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
 
-    // 进行全同步
+    // 执行全同步
     /* Fall back to SYNC if needed. Otherwise psync_result == PSYNC_FULLRESYNC
      * and the server.repl_master_runid and repl_master_initial_offset are
      * already populated. */
@@ -1587,7 +1592,7 @@ void replicationUnsetMaster(void) {
 void slaveofCommand(redisClient *c) {
     if (!strcasecmp(c->argv[1]->ptr,"no") &&
         !strcasecmp(c->argv[2]->ptr,"one")) {
-        // 断开主机连接
+        // slaveof no one 断开主机连接
         if (server.masterhost) {
             replicationUnsetMaster();
             redisLog(REDIS_NOTICE,"MASTER MODE enabled (user request)");
@@ -1617,7 +1622,7 @@ void slaveofCommand(redisClient *c) {
     addReply(c,shared.ok);
 }
 
-// 向主机发送 ACK
+// 向主机发送 ACK，依托 REPLCONF 命令发送
 /* Send a REPLCONF ACK command to the master to inform it about the current
  * processed offset. If we are not connected with a master, the command has
  * no effects. */
@@ -1685,7 +1690,7 @@ void replicationCacheMaster(redisClient *c) {
     /* Set fd to -1 so that we can safely call freeClient(c) later. */
     c->fd = -1;
 
-    // 清理保存的主机信息
+    // 修改连接的状态，设置 server.master = NULL
     /* Caching the master happens instead of the actual freeClient() call,
      * so make sure to adjust the replication state. This function will
      * also set server.master to NULL. */
@@ -1699,12 +1704,14 @@ void replicationDiscardCachedMaster(void) {
     if (server.cached_master == NULL) return;
 
     redisLog(REDIS_NOTICE,"Discarding previously cached master state.");
+
+    // 标记为非主机
     server.cached_master->flags &= ~REDIS_MASTER;
     freeClient(server.cached_master);
     server.cached_master = NULL;
 }
 
-// 缓存主机替代现有主机，且为 PSYNC（部分同步） 做好准备
+// 恢复缓存的主机，且为 PSYNC（部分同步） 做好准备
 /* Turn the cached master into the current master, using the file descriptor
  * passed as argument as the socket for the new master.
  *
@@ -1721,7 +1728,8 @@ void replicationResurrectCachedMaster(int newfd) {
     server.master->lastinteraction = server.unixtime;
     server.repl_state = REDIS_REPL_CONNECTED;
 
-    // 注册读事件，回调函数 readQueryFromClient()， readQueryFromClient() 可以处理 AOF 命令
+    // 注册读事件，回调函数 readQueryFromClient()
+    // readQueryFromClient() 可以处理 AOF 数据
     /* Re-add to the list of clients. */
     listAddNodeTail(server.clients,server.master);
     if (aeCreateFileEvent(server.el, newfd, AE_READABLE,
@@ -1890,7 +1898,7 @@ void replicationCron(void) {
         freeClient(server.master);
     }
 
-    // 如果需要（ REDIS_REPL_CONNECT），尝试连接主机
+    // 如果需要（ REDIS_REPL_CONNECT），尝试连接主机，真正连接主机的操作在这里
     /* Check if we should connect to a MASTER */
     if (server.repl_state == REDIS_REPL_CONNECT) {
         redisLog(REDIS_NOTICE,"Connecting to MASTER %s:%d",
@@ -1900,7 +1908,7 @@ void replicationCron(void) {
         }
     }
 
-    // 定时程序会尝试发送已收到数据的确认，即 ACK
+    // 从机向主机发送已收到数据的确认，即 ACK
     /* Send ACK to master from time to time. */
     if (server.masterhost && server.master)
         replicationSendAck();
@@ -1922,7 +1930,7 @@ void replicationCron(void) {
         replicationFeedSlaves(server.slaves, server.slaveseldb, ping_argv, 1);
         decrRefCount(ping_argv[0]);
 
-        // 从机可能在等待主机生产 RDB 文件，这个过程需要花点时间，发送心跳，
+        // 从机可能在等待主机生产 RDB 文件，这个过程需要花点时间，立即发送心跳，
         // 以防止从机断开连接
         /* Second, send a newline to all the slaves in pre-synchronization
          * stage, that is, slaves waiting for the master to create the RDB file.
@@ -1956,7 +1964,7 @@ void replicationCron(void) {
             // /* RDB file transmitted, sending just updates. */
             if (slave->replstate != REDIS_REPL_ONLINE) continue;
 
-            // 正在进行 PSYNC 的从机（全同步），不能断开，跳过
+            // 正在进行 PSYNC（全同步）的从机，不能断开，跳过
             if (slave->flags & REDIS_PRE_PSYNC_SLAVE) continue;
 
             // ACK 超时，断开！
