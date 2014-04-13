@@ -582,9 +582,14 @@ char *strEncoding(int encoding) {
     }
 }
 
+// 计算某个键值对的空闲时间
 /* Given an object returns the min number of seconds the object was never
  * requested, using an approximated LRU algorithm. */
 unsigned long estimateObjectIdleTime(robj *o) {
+    // server.lruclock 每秒 +1
+    // 在这里，因为记录 lru 的大小只有 22 bit，随意会有下面的算法：
+    // server.lru>=o->lru：数据空闲时间就是 server.lruclock - o->lru
+    // server.lru<o->lru：这是由于 server.lrulock 溢出导致的，所以数据空闲时间被修正为 (REDIS_LRU_CLOCK_MAX - o->lru) + server.lruclock
     if (server.lruclock >= o->lru) {
         return (server.lruclock - o->lru) * REDIS_LRU_CLOCK_RESOLUTION;
     } else {

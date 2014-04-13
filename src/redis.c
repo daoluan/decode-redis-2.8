@@ -2025,6 +2025,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
+    // 设置 redis 内存大小，如果超出，会执行 LRU
     /* Handle the maxmemory directive.
      *
      * First we try to free some memory if possible (if there are volatile
@@ -2755,6 +2756,8 @@ int freeMemoryIfNeeded(void) {
     /* Remove the size of slaves output buffers and AOF buffer from the
      * count of used memory. */
     mem_used = zmalloc_used_memory();
+
+    // 从机回复空间大小
     if (slaves) {
         listIter li;
         listNode *ln;
@@ -2769,14 +2772,17 @@ int freeMemoryIfNeeded(void) {
                 mem_used -= obuf_bytes;
         }
     }
+    // server.aof_buf && server.aof_rewrite_buf_blocks
     if (server.aof_state != REDIS_AOF_OFF) {
         mem_used -= sdslen(server.aof_buf);
         mem_used -= aofRewriteBufferSize();
     }
 
+    // 内存是否超过设置大小
     /* Check if we are over the memory limit. */
     if (mem_used <= server.maxmemory) return REDIS_OK;
 
+    // redis 中可以设置内存超额策略
     if (server.maxmemory_policy == REDIS_MAXMEMORY_NO_EVICTION)
         return REDIS_ERR; /* We need to free memory, but policy forbids. */
 
@@ -2786,6 +2792,7 @@ int freeMemoryIfNeeded(void) {
     while (mem_freed < mem_tofree) {
         int j, k, keys_freed = 0;
 
+        // 遍历所有数据集
         for (j = 0; j < server.dbnum; j++) {
             long bestval = 0; /* just to prevent warning */
             sds bestkey = NULL;
@@ -2793,6 +2800,7 @@ int freeMemoryIfNeeded(void) {
             redisDb *db = server.db+j;
             dict *dict;
 
+            // LRU 策略或者随机淘汰策略
             if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
                 server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM)
             {
@@ -2802,6 +2810,7 @@ int freeMemoryIfNeeded(void) {
             }
             if (dictSize(dict) == 0) continue;
 
+            // 随机淘汰随机策略
             /* volatile-random and allkeys-random policy */
             if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM ||
                 server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_RANDOM)
@@ -2810,6 +2819,7 @@ int freeMemoryIfNeeded(void) {
                 bestkey = dictGetKey(de);
             }
 
+            // LRU 策略
             /* volatile-lru and allkeys-lru policy */
             else if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
                 server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
@@ -2826,8 +2836,11 @@ int freeMemoryIfNeeded(void) {
                     if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
                         de = dictFind(db->dict, thiskey);
                     o = dictGetVal(de);
+
+                    // 计算 robj.lru 值
                     thisval = estimateObjectIdleTime(o);
 
+                    // 当前键值空闲时间更长，则记录
                     /* Higher idle time is better candidate for deletion */
                     if (bestkey == NULL || thisval > bestval) {
                         bestkey = thiskey;
@@ -2836,6 +2849,7 @@ int freeMemoryIfNeeded(void) {
                 }
             }
 
+            // TTL 策略
             /* volatile-ttl */
             else if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_TTL) {
                 for (k = 0; k < server.maxmemory_samples; k++) {

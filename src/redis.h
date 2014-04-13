@@ -377,8 +377,13 @@
 #define REDIS_LRU_CLOCK_RESOLUTION 10 /* LRU clock resolution in seconds */
 typedef struct redisObject {
     // 刚刚好 32 bits
+
+    // 对象的类型，字符串/列表/集合/哈希表
     unsigned type:4;
+    // 未使用的两个位
     unsigned notused:2;     /* Not used */
+    // 编码的方式，redis 为了节省空间，提供多种方式来保存一个数据
+    // 譬如：“123456789” 会被存储为整数 123456789
     unsigned encoding:4;
     unsigned lru:22;        /* lru time (relative to server.lruclock) */
 
