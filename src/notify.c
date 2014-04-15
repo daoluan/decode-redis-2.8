@@ -101,6 +101,7 @@ void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {
 
     eventobj = createStringObject(event,strlen(event));
 
+    // 生成两个消息字符串
     /* __keyspace@<db>__:<key> <event> notifications. */
     if (server.notify_keyspace_events & REDIS_NOTIFY_KEYSPACE) {
         chan = sdsnewlen("__keyspace@",11);
@@ -109,6 +110,8 @@ void notifyKeyspaceEvent(int type, char *event, robj *key, int dbid) {
         chan = sdscatlen(chan, "__:", 3);
         chan = sdscatsds(chan, key->ptr);
         chanobj = createObject(REDIS_STRING, chan);
+
+        // 给所有的订阅者发布消息
         pubsubPublishMessage(chanobj, eventobj);
         decrRefCount(chanobj);
     }

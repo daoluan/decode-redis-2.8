@@ -1609,6 +1609,8 @@ void asyncCloseClientOnOutputBufferLimitReached(redisClient *c) {
     }
 }
 
+// freeMemoryIfNeeded() 会调用此函数，将从机回复空间中数据发送给从机，
+// 为的是不让数据延迟太久
 /* Helper function used by freeMemoryIfNeeded() in order to flush slaves
  * output buffers without returning control to the event loop. */
 void flushSlavesOutputBuffers(void) {

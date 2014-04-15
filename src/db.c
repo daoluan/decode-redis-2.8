@@ -750,14 +750,18 @@ void propagateExpire(redisDb *db, robj *key) {
     incrRefCount(argv[0]);
     incrRefCount(argv[1]);
 
+    // 如果 AOF 持久化功能打开，则追加到 AOF 文件，已将数据
     if (server.aof_state != REDIS_AOF_OFF)
         feedAppendOnlyFile(server.delCommand,db->id,argv,2);
+
+    // 将该数据更新消息发布到所有的从机
     replicationFeedSlaves(server.slaves,db->id,argv,2);
 
     decrRefCount(argv[0]);
     decrRefCount(argv[1]);
 }
 
+// 如果键值对过期，舍弃
 int expireIfNeeded(redisDb *db, robj *key) {
     long long when = getExpire(db,key);
 

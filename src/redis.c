@@ -803,6 +803,7 @@ void activeExpireCycle(int type) {
     }
 }
 
+// 更新服务器的 lru 计数器
 void updateLRUClock(void) {
     server.lruclock = (server.unixtime/REDIS_LRU_CLOCK_RESOLUTION) &
                                                 REDIS_LRU_CLOCK_MAX;
@@ -1975,6 +1976,7 @@ void call(redisClient *c, int flags) {
     server.stat_numcommands++;
 }
 
+// 执行命令
 /* If this function gets called we already read a whole
  * command, arguments are in the client argv/argc fields.
  * processCommand() execute the command or prepare the
@@ -2025,7 +2027,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
-    // 设置 redis 内存大小，如果超出，会执行 LRU
+    // 内存超额
     /* Handle the maxmemory directive.
      *
      * First we try to free some memory if possible (if there are volatile
@@ -2734,6 +2736,7 @@ void monitorCommand(redisClient *c) {
 
 /* ============================ Maxmemory directive  ======================== */
 
+// 如果需要，是否一些内存
 /* This function gets called when 'maxmemory' is set on the config file to limit
  * the max memory used by the server, before processing a command.
  *
@@ -2753,6 +2756,7 @@ int freeMemoryIfNeeded(void) {
     size_t mem_used, mem_tofree, mem_freed;
     int slaves = listLength(server.slaves);
 
+    // redis 从机回复空间和 AOF 内存大小不计算入 redis 内存大小
     /* Remove the size of slaves output buffers and AOF buffer from the
      * count of used memory. */
     mem_used = zmalloc_used_memory();
@@ -2800,7 +2804,7 @@ int freeMemoryIfNeeded(void) {
             redisDb *db = server.db+j;
             dict *dict;
 
-            // LRU 策略或者随机淘汰策略
+            // 不同的策略，选择的数据集不一样
             if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
                 server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM)
             {
@@ -2808,9 +2812,11 @@ int freeMemoryIfNeeded(void) {
             } else {
                 dict = server.db[j].expires;
             }
+
+            // 数据集为空，继续下一个数据集
             if (dictSize(dict) == 0) continue;
 
-            // 随机淘汰随机策略
+            // 随机淘汰随机策略：随机挑选
             /* volatile-random and allkeys-random policy */
             if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM ||
                 server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_RANDOM)
@@ -2819,25 +2825,31 @@ int freeMemoryIfNeeded(void) {
                 bestkey = dictGetKey(de);
             }
 
-            // LRU 策略
+            // LRU 策略：挑选最近最少使用的数据
             /* volatile-lru and allkeys-lru policy */
             else if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
                 server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
             {
+                // server.maxmemory_samples 为随机挑选键值对次数
+                // 随机挑选 server.maxmemory_samples个键值对，驱逐最近最少使用的数据
                 for (k = 0; k < server.maxmemory_samples; k++) {
                     sds thiskey;
                     long thisval;
                     robj *o;
 
+                    // 随机挑选键值对
                     de = dictGetRandomKey(dict);
+
+                    // 获取键
                     thiskey = dictGetKey(de);
+
                     /* When policy is volatile-lru we need an additional lookup
                      * to locate the real key, as dict is set to db->expires. */
                     if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
                         de = dictFind(db->dict, thiskey);
                     o = dictGetVal(de);
 
-                    // 计算 robj.lru 值
+                    // 计算数据的空闲时间
                     thisval = estimateObjectIdleTime(o);
 
                     // 当前键值空闲时间更长，则记录
@@ -2849,9 +2861,11 @@ int freeMemoryIfNeeded(void) {
                 }
             }
 
-            // TTL 策略
+            // TTL 策略：挑选将要过期的数据
             /* volatile-ttl */
             else if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_TTL) {
+                // server.maxmemory_samples 为随机挑选键值对次数
+                // 随机挑选 server.maxmemory_samples个键值对，驱逐最快要过期的数据
                 for (k = 0; k < server.maxmemory_samples; k++) {
                     sds thiskey;
                     long thisval;
@@ -2869,12 +2883,25 @@ int freeMemoryIfNeeded(void) {
                 }
             }
 
+            // 删除选定的键值对
             /* Finally remove the selected key. */
             if (bestkey) {
                 long long delta;
 
                 robj *keyobj = createStringObject(bestkey,sdslen(bestkey));
+
+                // 发布数据更新消息，主要是 AOF 持久化和从机
                 propagateExpire(db,keyobj);
+
+                // 注意， propagateExpire() 可能会导致内存的分配， propagateExpire() 提前执行就是因为 redis 只计算 dbDelete() 释放的内存大小。倘若同时计算 dbDelete() 释放的内存和 propagateExpire() 分配空间的大小，与此同时假设分配空间大于释放空间，就有可能永远退不出这个循环。
+                // 下面的代码会同时计算 dbDelete() 释放的内存和 propagateExpire() 分配空间的大小：
+                // propagateExpire(db,keyobj);
+                // delta = (long long) zmalloc_used_memory();
+                // dbDelete(db,keyobj);
+                // delta -= (long long) zmalloc_used_memory();
+                // mem_freed += delta;
+                /////////////////////////////////////////
+
                 /* We compute the amount of memory freed by dbDelete() alone.
                  * It is possible that actually the memory needed to propagate
                  * the DEL in AOF and replication link is greater than the one
@@ -2883,16 +2910,21 @@ int freeMemoryIfNeeded(void) {
                  *
                  * AOF and Output buffer memory will be freed eventually so
                  * we only care about memory used by the key space. */
+                // 只计算 dbDelete() 释放内存的大小
                 delta = (long long) zmalloc_used_memory();
                 dbDelete(db,keyobj);
                 delta -= (long long) zmalloc_used_memory();
                 mem_freed += delta;
+
                 server.stat_evictedkeys++;
+
+                // 将数据的删除通知所有的订阅客户端
                 notifyKeyspaceEvent(REDIS_NOTIFY_EVICTED, "evicted",
                     keyobj, db->id);
                 decrRefCount(keyobj);
                 keys_freed++;
 
+                // 将从机回复空间中的数据及时发送给从机
                 /* When the memory to free starts to be big enough, we may
                  * start spending so much time here that is impossible to
                  * deliver data to the slaves fast enough, so we force the
@@ -2900,6 +2932,8 @@ int freeMemoryIfNeeded(void) {
                 if (slaves) flushSlavesOutputBuffers();
             }
         }
+
+        // 未能释放空间，且此时 redis 使用的内存大小依旧超额，失败返回
         if (!keys_freed) return REDIS_ERR; /* nothing to free... */
     }
     return REDIS_OK;

@@ -387,7 +387,10 @@ typedef struct redisObject {
     unsigned encoding:4;
     unsigned lru:22;        /* lru time (relative to server.lruclock) */
 
+    // 引用数
     int refcount;
+
+    // 数据指针
     void *ptr;
 } robj;
 
@@ -402,7 +405,7 @@ typedef struct redisObject {
     _var.ptr = _ptr; \
 } while(0);
 
-// redis 数据库数据结构
+// redis 数据集数据结构
 typedef struct redisDb {
     dict *dict;                 /* The keyspace for this DB */
     dict *expires;              /* Timeout of keys with a timeout set */
@@ -617,7 +620,7 @@ typedef struct redisOpArray {
 } redisOpArray;
 
 
-redis 服务器配置参数
+// redis 服务器配置参数
 /*-----------------------------------------------------------------------------
  * Global server state
  *----------------------------------------------------------------------------*/
@@ -690,7 +693,7 @@ struct redisServer {
     /* Fields used only for stats */
     time_t stat_starttime;          /* Server start time */
 
-    // 已经知性美命令的次数
+    // 已经执行命令的次数
     long long stat_numcommands;     /* Number of processed commands */
     long long stat_numconnections;  /* Number of connections received */
     long long stat_expiredkeys;     /* Number of expired keys */
