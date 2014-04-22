@@ -67,6 +67,7 @@ robj *lookupKeyRead(redisDb *db, robj *key) {
     return val;
 }
 
+// 返回指定键的值
 robj *lookupKeyWrite(redisDb *db, robj *key) {
     expireIfNeeded(db,key);
     return lookupKey(db,key);

@@ -199,6 +199,7 @@ int dictResize(dict *d)
 {
     int minimal;
 
+    // 不允许重置大小
     if (!dict_can_resize || dictIsRehashing(d)) return DICT_ERR;
     minimal = d->ht[0].used;
     if (minimal < DICT_HT_INITIAL_SIZE)
@@ -206,12 +207,14 @@ int dictResize(dict *d)
     return dictExpand(d, minimal);
 }
 
+// 扩展原有的哈希表，或者创建哈希表
 /* Expand or create the hash table */
 int dictExpand(dict *d, unsigned long size)
 {
     dictht n; /* the new hash table */
     unsigned long realsize = _dictNextPower(size);
 
+    // size 不合法，比元素数量还小
     /* the size is invalid if it is smaller than the number of
      * elements already inside the hash table */
     if (dictIsRehashing(d) || d->ht[0].used > size)
@@ -223,6 +226,7 @@ int dictExpand(dict *d, unsigned long size)
     n.table = zcalloc(realsize*sizeof(dictEntry*));
     n.used = 0;
 
+    // dict 初始化的情况，直接赋值给第一个 hashtable
     /* Is this the first initialization? If so it's not really a rehashing
      * we just set the first hash table so that it can accept keys. */
     if (d->ht[0].table == NULL) {
@@ -230,6 +234,7 @@ int dictExpand(dict *d, unsigned long size)
         return DICT_OK;
     }
 
+    // 赋值给第二个 hashta
     /* Prepare a second hash table for incremental rehashing */
     d->ht[1] = n;
     d->rehashidx = 0;
@@ -241,11 +246,13 @@ int dictExpand(dict *d, unsigned long size)
  * Note that a rehashing step consists in moving a bucket (that may have more
  * thank one key as we use chaining) from the old to the new hash table. */
 int dictRehash(dict *d, int n) {
+    // 正在重置哈希表，拒绝同时重置
     if (!dictIsRehashing(d)) return 0;
 
     while(n--) {
         dictEntry *de, *nextde;
 
+        // 第一个哈希表为空，证明已经重置哈希表，将第二个哈希表赋值给第一个，结束
         /* Check if we already rehashed the whole table... */
         if (d->ht[0].used == 0) {
             zfree(d->ht[0].table);
@@ -258,22 +265,35 @@ int dictRehash(dict *d, int n) {
         /* Note that rehashidx can't overflow as we are sure there are more
          * elements because ht[0].used != 0 */
         assert(d->ht[0].size > (unsigned)d->rehashidx);
+
+        // 找到第一个哈希表不为空的位置
         while(d->ht[0].table[d->rehashidx] == NULL) d->rehashidx++;
         de = d->ht[0].table[d->rehashidx];
+
+        // 将找到位置的所有数据项移动到第二个哈希表
         /* Move all the keys in this bucket from the old to the new hash HT */
         while(de) {
             unsigned int h;
-
             nextde = de->next;
+
             /* Get the index in the new hash table */
+            // 计算哈希值
             h = dictHashKey(d, de->key) & d->ht[1].sizemask;
+
+            // 头插法
             de->next = d->ht[1].table[h];
             d->ht[1].table[h] = de;
+
+            // 更新哈希表已使用位置数量
             d->ht[0].used--;
             d->ht[1].used++;
+
             de = nextde;
         }
+        // 置空
         d->ht[0].table[d->rehashidx] = NULL;
+
+        // 指向哈希表的下一个位置
         d->rehashidx++;
     }
     return 1;
@@ -310,12 +330,17 @@ static void _dictRehashStep(dict *d) {
     if (d->iterators == 0) dictRehash(d,1);
 }
 
+// 往哈希表添加新的数据
 /* Add an element to the target hash table */
 int dictAdd(dict *d, void *key, void *val)
 {
+    // 在哈希表中添加新的数据项，并设置键值
     dictEntry *entry = dictAddRaw(d,key);
 
+    // 可能已经存在该键
     if (!entry) return DICT_ERR;
+
+    // 设置值
     dictSetVal(d, entry, val);
     return DICT_OK;
 }
@@ -341,8 +366,10 @@ dictEntry *dictAddRaw(dict *d, void *key)
     dictEntry *entry;
     dictht *ht;
 
+    // 正在重置哈希？？？
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
+    // 获取该键在哈希表中的位置
     /* Get the index of the new element, or -1 if
      * the element already exists. */
     if ((index = _dictKeyIndex(d, key)) == -1)
@@ -350,16 +377,22 @@ dictEntry *dictAddRaw(dict *d, void *key)
 
     /* Allocate the memory and store the new entry */
     ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
+
+    // 新建数据空间
     entry = zmalloc(sizeof(*entry));
+
+    // 头插法
     entry->next = ht->table[index];
     ht->table[index] = entry;
     ht->used++;
 
+    // 设置键
     /* Set the hash entry fields. */
     dictSetKey(d, entry, key);
     return entry;
 }
 
+// dictReplace() 能实现添加键值对或者替换键值对
 /* Add an element, discarding the old if the key already exists.
  * Return 1 if the key was added from scratch, 0 if there was already an
  * element with such key and dictReplace() just performed a value update
@@ -368,10 +401,16 @@ int dictReplace(dict *d, void *key, void *val)
 {
     dictEntry *entry, auxentry;
 
+    // dictReplace() 能实现添加键值对或者替换键值对
+    // redis 这里的做法是先调用 dictAdd() 尝试添加键，
+    // - 如果添加失败，说明哈希表中已经有相应的数据项，再调用 dictFind() 找到数据项
+    //      的位置，设置需要替换的值
+    // - 如果成功，则会添加键并返回。
     /* Try to add the element. If the key
      * does not exists dictAdd will suceed. */
     if (dictAdd(d, key, val) == DICT_OK)
         return 1;
+
     /* It already exists, get the entry */
     entry = dictFind(d, key);
     /* Set the new value and free the old one. Note that it is important
@@ -385,6 +424,7 @@ int dictReplace(dict *d, void *key, void *val)
     return 0;
 }
 
+// 找到指定的数据项，如果存在就直接返回数据项的入口，否则添加返回
 /* dictReplaceRaw() is simply a version of dictAddRaw() that always
  * returns the hash entry of the specified key, even if the key already
  * exists and can't be added (in that case the entry of the already
@@ -397,6 +437,7 @@ dictEntry *dictReplaceRaw(dict *d, void *key) {
     return entry ? entry : dictAddRaw(d,key);
 }
 
+// 查找指定数据项，删除
 /* Search and remove an element */
 static int dictGenericDelete(dict *d, const void *key, int nofree)
 {
@@ -404,12 +445,19 @@ static int dictGenericDelete(dict *d, const void *key, int nofree)
     dictEntry *he, *prevHe;
     int table;
 
+    // 哈希表为空
     if (d->ht[0].size == 0) return DICT_ERR; /* d->ht[0].table is NULL */
+
+    // 正在重置哈希表
     if (dictIsRehashing(d)) _dictRehashStep(d);
+
+    // 计算哈希值
     h = dictHashKey(d, key);
 
     for (table = 0; table <= 1; table++) {
         idx = h & d->ht[table].sizemask;
+
+        // 单链表的删除
         he = d->ht[table].table[idx];
         prevHe = NULL;
         while(he) {
@@ -443,6 +491,7 @@ int dictDeleteNoFree(dict *ht, const void *key) {
     return dictGenericDelete(ht,key,1);
 }
 
+// 释放整个哈希表
 /* Destroy an entire dictionary */
 int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
     unsigned long i;
@@ -453,7 +502,10 @@ int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
 
         if (callback && (i & 65535) == 0) callback(d->privdata);
 
+        // 这个位置可能没有被用到
         if ((he = ht->table[i]) == NULL) continue;
+
+        // 遍历所有的数据项，释放内存
         while(he) {
             nextHe = he->next;
             dictFreeKey(d, he);
@@ -463,16 +515,22 @@ int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
             he = nextHe;
         }
     }
+
+    // 释放哈希数组
     /* Free the table and the allocated cache structure */
     zfree(ht->table);
+
+    // 初始化哈希表设置项
     /* Re-initialize the table */
     _dictReset(ht);
     return DICT_OK; /* never fails */
 }
 
+// 释放哈希表
 /* Clear & Release the hash table */
 void dictRelease(dict *d)
 {
+    // 释放第一个哈希表
     _dictClear(d,&d->ht[0],NULL);
     _dictClear(d,&d->ht[1],NULL);
     zfree(d);
@@ -483,22 +541,34 @@ dictEntry *dictFind(dict *d, const void *key)
     dictEntry *he;
     unsigned int h, idx, table;
 
+    // 不存在哈希表
     if (d->ht[0].size == 0) return NULL; /* We don't have a table at all */
+
+    // 正在重置哈希表，禁止查找
     if (dictIsRehashing(d)) _dictRehashStep(d);
+
+    // 计算哈希值
     h = dictHashKey(d, key);
+
+    // 有两个哈希表，找到哈希表中的位置
     for (table = 0; table <= 1; table++) {
+        // 相当于取余。上一步计算哈希值可能会超过哈希表大小
         idx = h & d->ht[table].sizemask;
+
         he = d->ht[table].table[idx];
         while(he) {
             if (dictCompareKeys(d, key, he->key))
                 return he;
             he = he->next;
         }
+
+        // 正在重置哈希表，拒绝访问第二个哈希表
         if (!dictIsRehashing(d)) return NULL;
     }
     return NULL;
 }
 
+// 在哈希表寻找相应键的值
 void *dictFetchValue(dict *d, const void *key) {
     dictEntry *he;
 
@@ -819,6 +889,7 @@ unsigned long dictScan(dict *d,
 
 /* ------------------------- private functions ------------------------------ */
 
+
 /* Expand the hash table if needed */
 static int _dictExpandIfNeeded(dict *d)
 {
@@ -865,11 +936,16 @@ static int _dictKeyIndex(dict *d, const void *key)
     unsigned int h, idx, table;
     dictEntry *he;
 
+    // 如果需要，会扩增哈希表
     /* Expand the hash table if needed */
     if (_dictExpandIfNeeded(d) == DICT_ERR)
         return -1;
+
+    // 计算哈希值
     /* Compute the key hash value */
     h = dictHashKey(d, key);
+
+    // 有两个哈希表，找到哈希表中的位置
     for (table = 0; table <= 1; table++) {
         idx = h & d->ht[table].sizemask;
         /* Search if this slot does not already contain the given key */
@@ -879,11 +955,14 @@ static int _dictKeyIndex(dict *d, const void *key)
                 return -1;
             he = he->next;
         }
+
+        // 正在重置哈希表，拒绝访问第二个哈希表
         if (!dictIsRehashing(d)) break;
     }
     return idx;
 }
 
+// 清空哈希表中的的数据
 void dictEmpty(dict *d, void(callback)(void*)) {
     _dictClear(d,&d->ht[0],callback);
     _dictClear(d,&d->ht[1],callback);
