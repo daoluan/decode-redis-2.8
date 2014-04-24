@@ -614,6 +614,7 @@ long long dictFingerprint(dict *d) {
     return hash;
 }
 
+// 获取迭代器
 dictIterator *dictGetIterator(dict *d)
 {
     dictIterator *iter = zmalloc(sizeof(*iter));
@@ -627,6 +628,7 @@ dictIterator *dictGetIterator(dict *d)
     return iter;
 }
 
+// 获取安全的迭代器
 dictIterator *dictGetSafeIterator(dict *d) {
     dictIterator *i = dictGetIterator(d);
 
@@ -634,11 +636,13 @@ dictIterator *dictGetSafeIterator(dict *d) {
     return i;
 }
 
+// 迭代器取下一个数据项的入口
 dictEntry *dictNext(dictIterator *iter)
 {
     while (1) {
         if (iter->entry == NULL) {
             dictht *ht = &iter->d->ht[iter->table];
+            // 新的迭代器
             if (iter->index == -1 && iter->table == 0) {
                 if (iter->safe)
                     iter->d->iterators++;
@@ -646,20 +650,29 @@ dictEntry *dictNext(dictIterator *iter)
                     iter->fingerprint = dictFingerprint(iter->d);
             }
             iter->index++;
+
+            // 下标超过了哈希表大小，不合法
             if (iter->index >= (signed) ht->size) {
                 if (dictIsRehashing(iter->d) && iter->table == 0) {
+                // 正在重置哈希表，则指向第二个哈希表
                     iter->table++;
                     iter->index = 0;
                     ht = &iter->d->ht[1];
                 } else {
+                // 否则迭代完毕
                     break;
                 }
             }
+
+            // 取得数据项入口
             iter->entry = ht->table[iter->index];
         } else {
+            // 取得下一个数据项人口
             iter->entry = iter->nextEntry;
         }
 
+        // 迭代器会保存下一个数据项的入口，因为用户可能会删除此函数返回的数据项
+        // 入口，如此会导致迭代器失效，找不到下一个数据项入口
         if (iter->entry) {
             /* We need to save the 'next' here, the iterator user
              * may delete the entry we are returning. */
