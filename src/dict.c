@@ -214,7 +214,7 @@ int dictExpand(dict *d, unsigned long size)
     dictht n; /* the new hash table */
     unsigned long realsize = _dictNextPower(size);
 
-    // size 不合法，比元素数量还小
+    // size 不合法，比元素数量还小或者正在执行哈希表重置操作
     /* the size is invalid if it is smaller than the number of
      * elements already inside the hash table */
     if (dictIsRehashing(d) || d->ht[0].used > size)
@@ -234,10 +234,10 @@ int dictExpand(dict *d, unsigned long size)
         return DICT_OK;
     }
 
-    // 赋值给第二个 hashta
+    // 赋值给第二个哈希表
     /* Prepare a second hash table for incremental rehashing */
     d->ht[1] = n;
-    d->rehashidx = 0;
+    d->rehashidx = 0;   // 需要重置哈希表
     return DICT_OK;
 }
 
@@ -246,13 +246,14 @@ int dictExpand(dict *d, unsigned long size)
  * Note that a rehashing step consists in moving a bucket (that may have more
  * thank one key as we use chaining) from the old to the new hash table. */
 int dictRehash(dict *d, int n) {
-    // 正在重置哈希表，拒绝同时重置
+    // 重置哈希表结束，直接返回
     if (!dictIsRehashing(d)) return 0;
 
     while(n--) {
         dictEntry *de, *nextde;
 
-        // 第一个哈希表为空，证明已经重置哈希表，将第二个哈希表赋值给第一个，结束
+        // 第一个哈希表为空，证明重置哈希表已经完成，将第二个哈希表赋值给第一个，
+        // 结束
         /* Check if we already rehashed the whole table... */
         if (d->ht[0].used == 0) {
             zfree(d->ht[0].table);
@@ -266,11 +267,11 @@ int dictRehash(dict *d, int n) {
          * elements because ht[0].used != 0 */
         assert(d->ht[0].size > (unsigned)d->rehashidx);
 
-        // 找到第一个哈希表不为空的位置
+        // 找到哈希表中不为空的位置
         while(d->ht[0].table[d->rehashidx] == NULL) d->rehashidx++;
         de = d->ht[0].table[d->rehashidx];
 
-        // 将找到位置的所有数据项移动到第二个哈希表
+        // 此位置的所有数据移动到第二个哈希表
         /* Move all the keys in this bucket from the old to the new hash HT */
         while(de) {
             unsigned int h;
@@ -284,7 +285,7 @@ int dictRehash(dict *d, int n) {
             de->next = d->ht[1].table[h];
             d->ht[1].table[h] = de;
 
-            // 更新哈希表已使用位置数量
+            // 更新哈希表中的数据量
             d->ht[0].used--;
             d->ht[1].used++;
 
@@ -318,6 +319,7 @@ int dictRehashMilliseconds(dict *d, int ms) {
     return rehashes;
 }
 
+// 执行单步的重置哈希操作，当且仅当没有安全迭代器绑定哈希表到时候
 /* This function performs just a step of rehashing, and only if there are
  * no safe iterators bound to our hash table. When we have iterators in the
  * middle of a rehashing we can't mess with the two hash tables otherwise
@@ -366,7 +368,7 @@ dictEntry *dictAddRaw(dict *d, void *key)
     dictEntry *entry;
     dictht *ht;
 
-    // 正在重置哈希？？？
+    // 如果正在重置哈希表，则执行单步的重置哈希表
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
     // 获取该键在哈希表中的位置
@@ -375,6 +377,8 @@ dictEntry *dictAddRaw(dict *d, void *key)
     if ((index = _dictKeyIndex(d, key)) == -1)
         return NULL;
 
+    // 如果正在重置哈希表，证明数据正在从第一个哈希表整合到第二个哈希表，
+    // ht 指向第二个哈希表
     /* Allocate the memory and store the new entry */
     ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
 
@@ -454,6 +458,7 @@ static int dictGenericDelete(dict *d, const void *key, int nofree)
     // 计算哈希值
     h = dictHashKey(d, key);
 
+    // 考虑两个哈希表
     for (table = 0; table <= 1; table++) {
         idx = h & d->ht[table].sizemask;
 
@@ -478,6 +483,8 @@ static int dictGenericDelete(dict *d, const void *key, int nofree)
             prevHe = he;
             he = he->next;
         }
+
+        // 哈希表重置完毕，证明第二哈希表为空，则放弃遍历第二个哈希表
         if (!dictIsRehashing(d)) break;
     }
     return DICT_ERR; /* not found */
@@ -502,7 +509,7 @@ int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
 
         if (callback && (i & 65535) == 0) callback(d->privdata);
 
-        // 这个位置可能没有被用到
+        // 哈希表的这个位置可能没有被用到
         if ((he = ht->table[i]) == NULL) continue;
 
         // 遍历所有的数据项，释放内存
@@ -544,13 +551,13 @@ dictEntry *dictFind(dict *d, const void *key)
     // 不存在哈希表
     if (d->ht[0].size == 0) return NULL; /* We don't have a table at all */
 
-    // 正在重置哈希表，禁止查找
+    // 正在重置哈希表，则执行单步的重置哈希表
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
     // 计算哈希值
     h = dictHashKey(d, key);
 
-    // 有两个哈希表，找到哈希表中的位置
+    // 考虑两个哈希表
     for (table = 0; table <= 1; table++) {
         // 相当于取余。上一步计算哈希值可能会超过哈希表大小
         idx = h & d->ht[table].sizemask;
@@ -562,7 +569,7 @@ dictEntry *dictFind(dict *d, const void *key)
             he = he->next;
         }
 
-        // 正在重置哈希表，拒绝访问第二个哈希表
+        // 哈希表重置完毕，证明第二哈希表为空，则放弃查找第二个哈希表
         if (!dictIsRehashing(d)) return NULL;
     }
     return NULL;
@@ -653,13 +660,17 @@ dictEntry *dictNext(dictIterator *iter)
 
             // 下标超过了哈希表大小，不合法
             if (iter->index >= (signed) ht->size) {
+                // 如果正在重置哈希表，redis 会尝试在第二个哈希表上进行迭代，
+                // 否则真的就不合法了
+
                 if (dictIsRehashing(iter->d) && iter->table == 0) {
-                // 正在重置哈希表，则指向第二个哈希表
+                // 正在重置哈希表，证明数据正在从第一个哈希表整合到第二个哈希表，
+                // 则指向第二个哈希表
                     iter->table++;
                     iter->index = 0;
                     ht = &iter->d->ht[1];
                 } else {
-                // 否则迭代完毕
+                // 否则迭代完毕，这是真正不合法的情况
                     break;
                 }
             }
@@ -717,6 +728,7 @@ dictEntry *dictGetRandomKey(dict *d)
         } while(he == NULL);
     }
 
+    // 计算链表长度，取随意一个
     /* Now we found a non empty bucket, but it is a linked
      * list and we need to get a random element from the list.
      * The only sane way to do so is counting the elements and
@@ -906,6 +918,7 @@ unsigned long dictScan(dict *d,
 /* Expand the hash table if needed */
 static int _dictExpandIfNeeded(dict *d)
 {
+    // 正在重置哈希表，说明哈希表已经扩增
     /* Incremental rehashing already in progress. Return. */
     if (dictIsRehashing(d)) return DICT_OK;
 
@@ -958,7 +971,7 @@ static int _dictKeyIndex(dict *d, const void *key)
     /* Compute the key hash value */
     h = dictHashKey(d, key);
 
-    // 有两个哈希表，找到哈希表中的位置
+    // 考虑两个哈希表
     for (table = 0; table <= 1; table++) {
         idx = h & d->ht[table].sizemask;
         /* Search if this slot does not already contain the given key */
@@ -969,7 +982,7 @@ static int _dictKeyIndex(dict *d, const void *key)
             he = he->next;
         }
 
-        // 正在重置哈希表，拒绝访问第二个哈希表
+        // 哈希表重置完毕，证明第二哈希表为空，则放弃查找第二个哈希表
         if (!dictIsRehashing(d)) break;
     }
     return idx;

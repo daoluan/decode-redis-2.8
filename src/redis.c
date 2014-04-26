@@ -1596,7 +1596,7 @@ void initServer() {
     // 创建事件循环结构体
     server.el = aeCreateEventLoop(server.maxclients+REDIS_EVENTLOOP_FDSET_INCR);
 
-    // 为数据库创建空间
+    // 分配数据集空间
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
     /* Open the TCP listening socket for the user commands. */
@@ -1623,10 +1623,12 @@ void initServer() {
         exit(1);
     }
 
-    // 创建 redis 数据库并初始化内部状态
+    // 初始化 redis 数据集
     /* Create the Redis databases, and initialize other internal state. */
     for (j = 0; j < server.REDIS_DEFAULT_DBNUM; j++) { // 初始化多个数据库
+        // 哈希表，用于存储键值对
         server.db[j].dict = dictCreate(&dbDictType,NULL);
+        // 哈希表，用于存储每个键的过期时间
         server.db[j].expires = dictCreate(&keyptrDictType,NULL);
         server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);
         server.db[j].ready_keys = dictCreate(&setDictType,NULL);
