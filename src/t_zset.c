@@ -111,9 +111,13 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
 
     redisAssert(!isnan(score));
     x = zsl->header;
+
+    // 遍历 skiplist 中所有的 level，找到新数据项将要插入的位置
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
+
+        // 链表的搜索
         while (x->level[i].forward &&
             (x->level[i].forward->score < score ||
                 (x->level[i].forward->score == score &&
@@ -121,13 +125,19 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
             rank[i] += x->level[i].span;
             x = x->level[i].forward;
         }
+
+        // update[i] 记录了新数据项的前驱
         update[i] = x;
     }
+
+    // random 一个 level，是随机的说
     /* we assume the key is not already inside, since we allow duplicated
      * scores, and the re-insertion of score and redis object should never
      * happen since the caller of zslInsert() should test in the hash table
      * if the element is already inside or not. */
     level = zslRandomLevel();
+
+    // random level 比原有的 level 大，需要增加 skiplist 的 level
     if (level > zsl->level) {
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
@@ -136,8 +146,10 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
         }
         zsl->level = level;
     }
+
     x = zslCreateNode(level,score,obj);
     for (i = 0; i < level; i++) {
+        // 新数据项插到 update[i] 的后面
         x->level[i].forward = update[i]->level[i].forward;
         update[i]->level[i].forward = x;
 
@@ -834,7 +846,7 @@ void zsetConvert(robj *zobj, int encoding) {
 }
 
 /*-----------------------------------------------------------------------------
- * Sorted set commands 
+ * Sorted set commands
  *----------------------------------------------------------------------------*/
 
 /* This generic command implements both ZADD and ZINCRBY. */

@@ -869,21 +869,29 @@ unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int v
         unsigned char *q;
 
         ZIP_DECODE_PREVLENSIZE(p, prevlensize);
+
+        // 跳过前驱数据项大小，解析数据项大小
+        // len 为 data 大小
+        // lensize 为 len 所占内存大小
         ZIP_DECODE_LENGTH(p + prevlensize, encoding, lensize, len);
+
+        // q 指向 data
         q = p + prevlensize + lensize;
 
         if (skipcnt == 0) {
             /* Compare current entry with specified entry */
             if (ZIP_IS_STR(encoding)) {
-                // 字符串比较
+            // 字符串比较
                 if (len == vlen && memcmp(q, vstr, vlen) == 0) {
                     return p;
                 }
             } else {
+            // 整数比较
                 /* Find out if the searched field can be encoded. Note that
                  * we do it only the first time, once done vencoding is set
                  * to non-zero and vll is set to the integer value. */
                 if (vencoding == 0) {
+                    // 尝试将 vstr 解析为整数
                     if (!zipTryEncoding(vstr, vlen, &vll, &vencoding)) {
                         /* If the entry can't be encoded we set it to
                          * UCHAR_MAX so that we don't retry again the next
@@ -919,6 +927,7 @@ unsigned char *ziplistFind(unsigned char *p, unsigned char *vstr, unsigned int v
         p = q + len;
     }
 
+    // 没有找到
     return NULL;
 }
 
