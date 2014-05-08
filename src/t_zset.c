@@ -112,7 +112,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
     redisAssert(!isnan(score));
     x = zsl->header;
 
-    // 遍历 skiplist 中所有的 level，找到新数据项将要插入的位置
+    // 遍历 skiplist 中所有的层，找到数据将要插入的位置，并保存在 update 中
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
@@ -130,14 +130,14 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
         update[i] = x;
     }
 
-    // random 一个 level，是随机的说
+    // random 一个 level，是随机的
     /* we assume the key is not already inside, since we allow duplicated
      * scores, and the re-insertion of score and redis object should never
      * happen since the caller of zslInsert() should test in the hash table
      * if the element is already inside or not. */
     level = zslRandomLevel();
 
-    // random level 比原有的 level 大，需要增加 skiplist 的 level
+    // random level 比原有的 zsl->level 大，需要增加 skiplist 的 level
     if (level > zsl->level) {
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
@@ -147,9 +147,10 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
         zsl->level = level;
     }
 
+    // 插入
     x = zslCreateNode(level,score,obj);
     for (i = 0; i < level; i++) {
-        // 新数据项插到 update[i] 的后面
+        // 新节点项插到 update[i] 的后面
         x->level[i].forward = update[i]->level[i].forward;
         update[i]->level[i].forward = x;
 
@@ -158,38 +159,53 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
         update[i]->level[i].span = (rank[0] - rank[i]) + 1;
     }
 
+    // 更高的 level 尚未调整 span
     /* increment span for untouched levels */
     for (i = level; i < zsl->level; i++) {
         update[i]->level[i].span++;
     }
 
+    // 调整新节点的前驱指针
     x->backward = (update[0] == zsl->header) ? NULL : update[0];
     if (x->level[0].forward)
         x->level[0].forward->backward = x;
     else
         zsl->tail = x;
+
+    // 调整 skiplist 的长度
     zsl->length++;
     return x;
 }
 
+// x 是需要删除的节点
+// update 是 每一个层 x 的前驱数组
 /* Internal function used by zslDelete, zslDeleteByScore and zslDeleteByRank */
 void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update) {
     int i;
+
+    // 调整 span 和 forward 指针
     for (i = 0; i < zsl->level; i++) {
         if (update[i]->level[i].forward == x) {
             update[i]->level[i].span += x->level[i].span - 1;
             update[i]->level[i].forward = x->level[i].forward;
         } else {
+            // update[i]->level[i].forward == NULL，只调整 span
             update[i]->level[i].span -= 1;
         }
     }
+
+    // 调整后驱指针
     if (x->level[0].forward) {
         x->level[0].forward->backward = x->backward;
     } else {
         zsl->tail = x->backward;
     }
+
+    // 删除某一个节点后，层数 level 可能降低，调整 level
     while(zsl->level > 1 && zsl->header->level[zsl->level-1].forward == NULL)
         zsl->level--;
+
+    // 调整跳表的长度
     zsl->length--;
 }
 
@@ -198,6 +214,7 @@ int zslDelete(zskiplist *zsl, double score, robj *obj) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
     int i;
 
+    // 记录每一层需要删除数据的前驱
     x = zsl->header;
     for (i = zsl->level-1; i >= 0; i--) {
         while (x->level[i].forward &&
@@ -207,9 +224,10 @@ int zslDelete(zskiplist *zsl, double score, robj *obj) {
             x = x->level[i].forward;
         update[i] = x;
     }
+
     /* We may have multiple elements with the same score, what we need
      * is to find the element with both the right score and object. */
-    x = x->level[0].forward;
+    x = x->level[0].forward; // x 即为需要删除的数据
     if (x && score == x->score && equalStringObjects(x->obj,obj)) {
         zslDeleteNode(zsl, x, update);
         zslFreeNode(x);
@@ -877,15 +895,21 @@ void zaddGenericCommand(redisClient *c, int incr) {
     /* Lookup the key and create the sorted set if does not exist. */
     zobj = lookupKeyWrite(c->db,key);
     if (zobj == NULL) {
+        // 符合条件，选用 skiplist
         if (server.zset_max_ziplist_entries == 0 ||
             server.zset_max_ziplist_value < sdslen(c->argv[3]->ptr))
         {
             zobj = createZsetObject();
+
+        // 选用 ziplist
         } else {
             zobj = createZsetZiplistObject();
         }
+
+        // 添加到数据集
         dbAdd(c->db,key,zobj);
     } else {
+        // zdd 命令所使用的数据类型必须是 REDIS_ZSET
         if (zobj->type != REDIS_ZSET) {
             addReply(c,shared.wrongtypeerr);
             goto cleanup;
@@ -952,7 +976,9 @@ void zaddGenericCommand(redisClient *c, int incr) {
                  * delete the key object from the skiplist, since the
                  * dictionary still has a reference to it. */
                 if (score != curscore) {
+                    // 删除原有
                     redisAssertWithInfo(c,curobj,zslDelete(zs->zsl,curscore,curobj));
+                    // 添加新的数据
                     znode = zslInsert(zs->zsl,score,curobj);
                     incrRefCount(curobj); /* Re-inserted in skiplist. */
                     dictGetVal(de) = &znode->score; /* Update score ptr. */

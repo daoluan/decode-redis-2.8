@@ -380,14 +380,18 @@ typedef struct redisObject {
 
     // 对象的类型，字符串/列表/集合/哈希表
     unsigned type:4;
+
     // 未使用的两个位
     unsigned notused:2;     /* Not used */
+
     // 编码的方式，redis 为了节省空间，提供多种方式来保存一个数据
     // 譬如：“123456789” 会被存储为整数 123456789
     unsigned encoding:4;
+
+    // 当内存紧张，淘汰数据的时候用到
     unsigned lru:22;        /* lru time (relative to server.lruclock) */
 
-    // 引用数
+    // 引用计数
     int refcount;
 
     // 数据指针
@@ -565,20 +569,35 @@ struct sharedObjectsStruct {
     *bulkhdr[REDIS_SHARED_BULKHDR_LEN];  /* "$<value>\r\n" */
 };
 
+// 跳表节点结构体
 /* ZSETs use a specialized version of Skiplists */
 typedef struct zskiplistNode {
+    // 节点数据
     robj *obj;
+
+    // 分数，游戏分数？按游戏分数排序
     double score;
+
+    // 后驱指针
     struct zskiplistNode *backward;
+
+    // 后驱指针数组
     struct zskiplistLevel {
         struct zskiplistNode *forward;
+
+        // 调到下一个数据项需要走多少步
         unsigned int span;
     } level[];
 } zskiplistNode;
 
 typedef struct zskiplist {
+    // 跳表头尾指针
     struct zskiplistNode *header, *tail;
+
+    // 跳表的长度
     unsigned long length;
+
+    // 跳表的高度
     int level;
 } zskiplist;
 

@@ -47,6 +47,7 @@ int stringmatchlen(const char *pattern, int patternLen,
     while(patternLen) {
         switch(pattern[0]) {
         case '*':
+            // 跳过所有的 *
             while (pattern[1] == '*') {
                 pattern++;
                 patternLen--;
@@ -54,6 +55,7 @@ int stringmatchlen(const char *pattern, int patternLen,
             if (patternLen == 1)
                 return 1; /* match */
             while(stringLen) {
+                // 递归
                 if (stringmatchlen(pattern+1, patternLen-1,
                             string, stringLen, nocase))
                     return 1; /* match */
@@ -65,6 +67,7 @@ int stringmatchlen(const char *pattern, int patternLen,
         case '?':
             if (stringLen == 0)
                 return 0; /* no match */
+            // 只跳过一个字符
             string++;
             stringLen--;
             break;
@@ -75,33 +78,33 @@ int stringmatchlen(const char *pattern, int patternLen,
             pattern++;
             patternLen--;
             not = pattern[0] == '^';
-            if (not) {
+            if (not) { // skip ^
                 pattern++;
                 patternLen--;
             }
             match = 0;
             while(1) {
                 if (pattern[0] == '\\') {
-                    pattern++;
+                    pattern++; // skip \\
                     patternLen--;
                     if (pattern[0] == string[0])
                         match = 1;
-                } else if (pattern[0] == ']') {
+                } else if (pattern[0] == ']') { // end
                     break;
                 } else if (patternLen == 0) {
-                    pattern--;
+                    pattern--; // protect
                     patternLen++;
                     break;
                 } else if (pattern[1] == '-' && patternLen >= 3) {
                     int start = pattern[0];
                     int end = pattern[2];
                     int c = string[0];
-                    if (start > end) {
+                    if (start > end) { // swap
                         int t = start;
                         start = end;
                         end = t;
                     }
-                    if (nocase) {
+                    if (nocase) { // tolower
                         start = tolower(start);
                         end = tolower(end);
                         c = tolower(c);
@@ -111,7 +114,7 @@ int stringmatchlen(const char *pattern, int patternLen,
                     if (c >= start && c <= end)
                         match = 1;
                 } else {
-                    if (!nocase) {
+                    if (!nocase) { // case
                         if (pattern[0] == string[0])
                             match = 1;
                     } else {
@@ -122,6 +125,9 @@ int stringmatchlen(const char *pattern, int patternLen,
                 pattern++;
                 patternLen--;
             }
+
+            // [^xxxx] 不能匹配 xxxx，match!=0 表示 string 中出现 xxxx，
+            // 匹配失败
             if (not)
                 match = !match;
             if (!match)
@@ -131,7 +137,7 @@ int stringmatchlen(const char *pattern, int patternLen,
             break;
         }
         case '\\':
-            if (patternLen >= 2) {
+            if (patternLen >= 2) { // skip \\
                 pattern++;
                 patternLen--;
             }
@@ -151,7 +157,7 @@ int stringmatchlen(const char *pattern, int patternLen,
         pattern++;
         patternLen--;
         if (stringLen == 0) {
-            while(*pattern == '*') {
+            while(*pattern == '*') { // skip all *
                 pattern++;
                 patternLen--;
             }

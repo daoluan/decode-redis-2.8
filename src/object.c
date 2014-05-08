@@ -37,9 +37,11 @@ robj *createObject(int type, void *ptr) {
     o->type = type;
     o->encoding = REDIS_ENCODING_RAW;
     o->ptr = ptr;
+
     // 引用初始化为 1
     o->refcount = 1;
 
+    // 当内存紧张，淘汰数据的时候用到
     /* Set the LRU to the current lruclock (minutes resolution). */
     o->lru = server.lruclock;
     return o;
@@ -214,15 +216,18 @@ void freeHashObject(robj *o) {
     }
 }
 
+// 增加 redis 对象引用
 void incrRefCount(robj *o) {
     o->refcount++;
 }
 
+// 减少 redis 对象引用。特别的，引用为零的时候会销毁对象
 void decrRefCount(robj *o) {
     if (o->refcount <= 0) redisPanic("decrRefCount against refcount <= 0");
 
     // 如果取消的是最后一个引用，则释放资源
     if (o->refcount == 1) {
+        // 不同数据类型，销毁操作不同
         switch(o->type) {
         case REDIS_STRING: freeStringObject(o); break;
         case REDIS_LIST: freeListObject(o); break;
@@ -348,6 +353,7 @@ robj *getDecodedObject(robj *o) {
         incrRefCount(o);
         return o;
     }
+    // int -> string
     if (o->type == REDIS_STRING && o->encoding == REDIS_ENCODING_INT) {
         char buf[32];
 

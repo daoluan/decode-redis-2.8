@@ -39,29 +39,38 @@ void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *
  * an integer-encodable value, an intset will be returned. Otherwise a regular
  * hash table. */
 robj *setTypeCreate(robj *value) {
+    // 可以表示为整数，则用 intset 数据结构
     if (isObjectRepresentableAsLongLong(value,NULL) == REDIS_OK)
         return createIntsetObject();
+
+    // 否则使用 dict
     return createSetObject();
 }
 
 int setTypeAdd(robj *subject, robj *value) {
     long long llval;
+
+    // subject 的数据结构是 HT，即哈希表，本质是 dict
     if (subject->encoding == REDIS_ENCODING_HT) {
         if (dictAdd(subject->ptr,value,NULL) == DICT_OK) {
             incrRefCount(value);
             return 1;
         }
     } else if (subject->encoding == REDIS_ENCODING_INTSET) {
+        // 插入的数据能表示为整数，则转换后插入 inset
         if (isObjectRepresentableAsLongLong(value,&llval) == REDIS_OK) {
             uint8_t success = 0;
             subject->ptr = intsetAdd(subject->ptr,llval,&success);
             if (success) {
+                // redis 不允许在 inset 中存储过多的数据
                 /* Convert to regular set when the intset contains
                  * too many entries. */
                 if (intsetLen(subject->ptr) > server.set_max_intset_entries)
                     setTypeConvert(subject,REDIS_ENCODING_HT);
                 return 1;
             }
+
+        // 不能表示为整数，将数据结构从 inset 转换为 dict
         } else {
             /* Failed to get integer from object, convert to regular set. */
             setTypeConvert(subject,REDIS_ENCODING_HT);
@@ -515,7 +524,7 @@ void srandmemberWithCountCommand(redisClient *c) {
             size--;
         }
     }
-    
+
     /* CASE 4: We have a big set compared to the requested number of elements.
      * In this case we can simply get random elements from the set and add
      * to the temporary set, trying to eventually get enough unique elements

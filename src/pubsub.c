@@ -60,7 +60,7 @@ int pubsubSubscribeChannel(redisClient *c, robj *channel) {
         retval = 1;
         incrRefCount(channel);
 
-        // 在服务器负责维护的频道列表中寻找客户端指定的频道
+        // 在服务器负责维护的频道列表中寻找指定的频道
         /* Add the client to the channel -> list of clients hash table */
         de = dictFind(server.pubsub_channels,channel);
 
@@ -137,6 +137,7 @@ int pubsubSubscribePattern(redisClient *c, robj *pattern) {
     int retval = 0;
 
     if (listSearchKey(c->pubsub_patterns,pattern) == NULL) {
+    // 未找到，插入
         retval = 1;
         pubsubPattern *pat;
         listAddNodeTail(c->pubsub_patterns,pattern);
@@ -232,6 +233,7 @@ int pubsubUnsubscribeAllPatterns(redisClient *c, int notify) {
     return count;
 }
 
+// 发布消息
 /* Publish a message */
 int pubsubPublishMessage(robj *channel, robj *message) {
     int receivers = 0;
@@ -262,6 +264,8 @@ int pubsubPublishMessage(robj *channel, robj *message) {
             receivers++;
         }
     }
+
+    // glob-style 模式匹配
     /* Send to clients listening to matching channels */
     if (listLength(server.pubsub_patterns)) {
         listRewind(server.pubsub_patterns,&li);
@@ -269,6 +273,7 @@ int pubsubPublishMessage(robj *channel, robj *message) {
         while ((ln = listNext(&li)) != NULL) {
             pubsubPattern *pat = ln->value;
 
+            // 匹配成功
             if (stringmatchlen((char*)pat->pattern->ptr,
                                 sdslen(pat->pattern->ptr),
                                 (char*)channel->ptr,
