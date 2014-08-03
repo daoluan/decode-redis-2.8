@@ -633,6 +633,8 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, 
         }
         sets[j] = setobj;
     }
+
+    // 排序
     /* Sort sets from the smallest to largest, this will improve our
      * algorithm's performance */
     qsort(sets,setnum,sizeof(robj*),qsortCompareSetsByCardinality);

@@ -575,7 +575,7 @@ dictEntry *dictFind(dict *d, const void *key)
     return NULL;
 }
 
-// 在哈希表寻找相应键的值
+// 在哈希表寻找键相应的值
 void *dictFetchValue(dict *d, const void *key) {
     dictEntry *he;
 

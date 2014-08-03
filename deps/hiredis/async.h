@@ -43,8 +43,11 @@ struct dict; /* dictionary header is included in async.c */
 /* Reply callback prototype and container */
 typedef void (redisCallbackFn)(struct redisAsyncContext*, void*, void*);
 typedef struct redisCallback {
+    // 联想，单链表
     struct redisCallback *next; /* simple singly linked list */
+    // 函数指针，相当于回调函数的作用
     redisCallbackFn *fn;
+    // 某些附带的数据
     void *privdata;
 } redisCallback;
 
@@ -57,6 +60,7 @@ typedef struct redisCallbackList {
 typedef void (redisDisconnectCallback)(const struct redisAsyncContext*, int status);
 typedef void (redisConnectCallback)(const struct redisAsyncContext*, int status);
 
+// 异步连接上下文结构体
 /* Context for an async connection to Redis */
 typedef struct redisAsyncContext {
     /* Hold the regular context, so it can be realloc'ed. */
@@ -89,9 +93,11 @@ typedef struct redisAsyncContext {
     /* Called when the first write event was received. */
     redisConnectCallback *onConnect;
 
+    // 普通命令的回调函数
     /* Regular command callbacks */
     redisCallbackList replies;
 
+    // 订阅回调函数
     /* Subscription callbacks */
     struct {
         redisCallbackList invalid;

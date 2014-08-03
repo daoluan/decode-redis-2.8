@@ -1183,12 +1183,16 @@ int redisGetReply(redisContext *c, void **reply) {
 int __redisAppendCommand(redisContext *c, char *cmd, size_t len) {
     sds newbuf;
 
+    // 将新的命令追加到 redisContext.obuf
     newbuf = sdscatlen(c->obuf,cmd,len);
+
+    // 内存溢出
     if (newbuf == NULL) {
         __redisSetError(c,REDIS_ERR_OOM,"Out of memory");
         return REDIS_ERR;
     }
 
+    // 调整指针 redisContext.obuf
     c->obuf = newbuf;
     return REDIS_OK;
 }

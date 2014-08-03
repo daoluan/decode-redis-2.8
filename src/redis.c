@@ -2083,7 +2083,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
-    // 在订阅发布模式下，才允许处理 SUBSCRIBE 或者 UNSUBSCRIBE 命令
+    // 在订阅发布模式下，只允许处理 SUBSCRIBE 或者 UNSUBSCRIBE 命令
     // 从下面的检测条件可以看出：只要存在 redisClient.pubsub_channels 或者 redisClient.pubsub_patterns，就代表处于订阅发布模式下
     /* Only allow SUBSCRIBE and UNSUBSCRIBE in the context of Pub/Sub */
     if ((dictSize(c->pubsub_channels) > 0 || listLength(c->pubsub_patterns) > 0)
@@ -2139,10 +2139,12 @@ int processCommand(redisClient *c) {
         c->cmd->proc != execCommand && c->cmd->proc != discardCommand &&
         c->cmd->proc != multiCommand && c->cmd->proc != watchCommand)
     {
+        // 命令入队
         queueMultiCommand(c);
         addReply(c,shared.queued);
 
-    // 真正执行命令。注意，如果是设置了多命令模式，那么不是直接执行命令，而是让命令入队
+    // 真正执行命令。
+    // 注意，如果是设置了多命令模式，那么不是直接执行命令，而是让命令入队
     } else {
         call(c,REDIS_CALL_FULL);
         if (listLength(server.ready_keys))

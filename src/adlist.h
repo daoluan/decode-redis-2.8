@@ -47,11 +47,22 @@ typedef struct listIter {
 } listIter;
 
 typedef struct list {
+    // 头指针
     listNode *head;
+
+    // 尾指针
     listNode *tail;
+
+    // 数据拷贝函数指针
     void *(*dup)(void *ptr);
+
+    // 析构函数指针
     void (*free)(void *ptr);
+
+    // 数据比较指针
     int (*match)(void *ptr, void *key);
+
+    // 链表长度
     unsigned long len;
 } list;
 

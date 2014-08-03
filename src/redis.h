@@ -420,16 +420,29 @@ typedef struct redisDb {
     long long avg_ttl;          /* Average TTL, just for stats */
 } redisDb;
 
+// 命令结构体，多命令专用
 /* Client MULTI/EXEC state */
 typedef struct multiCmd {
+    // 命令参数
     robj **argv;
+
+    // 参数个数
     int argc;
+
+    // 命令结构体，包含了与命令相关的参数，譬如命令执行函数
+    // 如需更详细了解，参看 redis.c 中的 redisCommandTable 全局参数
     struct redisCommand *cmd;
 } multiCmd;
 
+// 多命令结构体
 typedef struct multiState {
+    // 命令队列
     multiCmd *commands;     /* Array of MULTI commands */
+
+    // 命令的个数
     int count;              /* Total number of MULTI commands */
+
+    // 以下两个参数暂时没有用到，和主从复制有关
     int minreplicas;        /* MINREPLICAS for synchronous replication */
     time_t minreplicas_timeout; /* MINREPLICAS timeout as unixtime. */
 } multiState;
@@ -534,7 +547,7 @@ typedef struct redisClient {
     blockingState bpop;   /* blocking state */
     list *watched_keys;     /* Keys WATCHED for MULTI/EXEC CAS */
 
-    // 用户感兴趣的频道。
+    // 用户感兴趣的频道
     // 这个参数几乎只用来维护客户端订阅了多少频道这个数据
     dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
 
@@ -602,7 +615,10 @@ typedef struct zskiplist {
 } zskiplist;
 
 typedef struct zset {
+    // 哈希表
     dict *dict;
+
+    // 跳表
     zskiplist *zsl;
 } zset;
 
@@ -958,7 +974,6 @@ struct redisCommand {
     char *name;
     redisCommandProc *proc;
 
-    // 命令参数个数
     int arity;
     char *sflags; /* Flags as string representation, one char per flag. */
     int flags;    /* The actual flags, obtained from the 'sflags' field. */

@@ -197,6 +197,7 @@ static int __redisPushCallback(redisCallbackList *list, redisCallback *source) {
 }
 
 static int __redisShiftCallback(redisCallbackList *list, redisCallback *target) {
+    // 用头取法，从 redisCallbackList 链表取得 redisCallback
     redisCallback *cb = list->head;
     if (cb != NULL) {
         list->head = cb->next;
@@ -215,8 +216,11 @@ static int __redisShiftCallback(redisCallbackList *list, redisCallback *target) 
 static void __redisRunCallback(redisAsyncContext *ac, redisCallback *cb, redisReply *reply) {
     redisContext *c = &(ac->c);
     if (cb->fn != NULL) {
+        // 标记正在执行回调函数
         c->flags |= REDIS_IN_CALLBACK;
+        // 执行回调函数
         cb->fn(ac,reply,cb->privdata);
+        // 取消标记
         c->flags &= ~REDIS_IN_CALLBACK;
     }
 }
@@ -366,13 +370,15 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
 
     while((status = redisGetReply(c,&reply)) == REDIS_OK) {
         if (reply == NULL) {
+            // 没有回复信息，断开连接
             /* When the connection is being disconnected and there are
              * no more replies, this is the cue to really disconnect. */
             if (c->flags & REDIS_DISCONNECTING && sdslen(c->obuf) == 0) {
                 __redisAsyncDisconnect(ac);
                 return;
             }
-            
+
+            // 监视模式下。。。。
             /* If monitor mode, repush callback */
             if(c->flags & REDIS_MONITORING) {
                 __redisPushCallback(&ac->replies,&cb);
@@ -385,6 +391,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
 
         /* Even if the context is subscribed, pending regular callbacks will
          * get a reply before pub/sub messages arrive. */
+        // 获取 redisCallback
         if (__redisShiftCallback(&ac->replies,&cb) != REDIS_OK) {
             /*
              * A spontaneous reply in a not-subscribed context can be the error
@@ -413,6 +420,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
                 __redisGetSubscribeCallback(ac,reply,&cb);
         }
 
+        // 执行回调函数
         if (cb.fn != NULL) {
             __redisRunCallback(ac,&cb,reply);
             c->reader->fn->freeObject(reply);
@@ -431,6 +439,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
         }
     }
 
+    // 出错了，则直接关闭
     /* Disconnect when there was an error reading the reply */
     if (status != REDIS_OK)
         __redisAsyncDisconnect(ac);
@@ -442,6 +451,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
 static int __redisAsyncHandleConnect(redisAsyncContext *ac) {
     redisContext *c = &(ac->c);
 
+    // 检测 socket 错误，尝试连接
     if (redisCheckSocketError(c,c->fd) == REDIS_ERR) {
         /* Try again later when connect(2) is still in progress. */
         if (errno == EINPROGRESS)
@@ -452,6 +462,7 @@ static int __redisAsyncHandleConnect(redisAsyncContext *ac) {
         return REDIS_ERR;
     }
 
+    // 尝试连接成功
     /* Mark context as connected. */
     c->flags |= REDIS_CONNECTED;
     if (ac->onConnect) ac->onConnect(ac,REDIS_OK);
@@ -464,6 +475,7 @@ static int __redisAsyncHandleConnect(redisAsyncContext *ac) {
 void redisAsyncHandleRead(redisAsyncContext *ac) {
     redisContext *c = &(ac->c);
 
+    // 如果连接已经断开，尝试连接
     if (!(c->flags & REDIS_CONNECTED)) {
         /* Abort connect was not successful. */
         if (__redisAsyncHandleConnect(ac) != REDIS_OK)
@@ -473,7 +485,9 @@ void redisAsyncHandleRead(redisAsyncContext *ac) {
             return;
     }
 
+    // 读取数据
     if (redisBufferRead(c) == REDIS_ERR) {
+        // 读取错误，断开连接并做一些清理工作
         __redisAsyncDisconnect(ac);
     } else {
         /* Always re-schedule reads */
@@ -537,14 +551,17 @@ static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void 
     char *p;
     sds sname;
 
+    // 必须与主机连接
     /* Don't accept new commands when the connection is about to be closed. */
     if (c->flags & (REDIS_DISCONNECTING | REDIS_FREEING)) return REDIS_ERR;
 
+    // 设置回调函数
     /* Setup callback */
     cb.fn = fn;
     cb.privdata = privdata;
 
     /* Find out which command will be appended. */
+    // 指针指向下一个命令
     p = nextArgument(cmd,&cstr,&clen);
     assert(p != NULL);
     hasnext = (p[0] == '$');
@@ -596,17 +613,23 @@ int redisvAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void *privdat
     char *cmd;
     int len;
     int status;
+
+    // 将命令格式化,准备提交执行
     len = redisvFormatCommand(&cmd,format,ap);
+
     status = __redisAsyncCommand(ac,fn,privdata,cmd,len);
     free(cmd);
     return status;
 }
 
 int redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void *privdata, const char *format, ...) {
+    // va_ 系列的函数在用省略号指定参数表的时候会经常用到
     va_list ap;
     int status;
     va_start(ap,format);
+
     status = redisvAsyncCommand(ac,fn,privdata,format,ap);
+
     va_end(ap);
     return status;
 }

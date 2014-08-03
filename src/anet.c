@@ -137,7 +137,7 @@ int anetEnableTcpNoDelay(char *err, int fd)
     return anetSetTcpNoDelay(err, fd, 1);
 }
 
-int anetDisableTcpNoDelay(char *err, int fd) 
+int anetDisableTcpNoDelay(char *err, int fd)
 {
     return anetSetTcpNoDelay(err, fd, 0);
 }
@@ -176,9 +176,12 @@ int anetResolve(char *err, char *host, char *ipbuf, size_t ipbuf_len)
         anetSetError(err, "%s", gai_strerror(rv));
         return ANET_ERR;
     }
+
+    // IPV4
     if (info->ai_family == AF_INET) {
         struct sockaddr_in *sa = (struct sockaddr_in *)info->ai_addr;
         inet_ntop(AF_INET, &(sa->sin_addr), ipbuf, ipbuf_len);
+    // IPV6
     } else {
         struct sockaddr_in6 *sa = (struct sockaddr_in6 *)info->ai_addr;
         inet_ntop(AF_INET6, &(sa->sin6_addr), ipbuf, ipbuf_len);
