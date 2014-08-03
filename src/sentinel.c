@@ -1190,6 +1190,7 @@ void sentinelResetMaster(sentinelRedisInstance *ri, int flags) {
     redisAssert(ri->flags & SRI_MASTER); // 监视的必须是 master
     dictRelease(ri->slaves);
     ri->slaves = dictCreate(&instancesDictType,NULL);
+    // 设置了标识，无需清空哨兵
     if (!(flags & SENTINEL_RESET_NO_SENTINELS)) {
         dictRelease(ri->sentinels);
         ri->sentinels = dictCreate(&instancesDictType,NULL);
@@ -1240,6 +1241,7 @@ int sentinelResetMastersByPattern(char *pattern, int flags) {
     return reset;
 }
 
+// 重置 sentinelRedisInstance '主机'实例，并更换 IP 地址和端口
 /* Reset the specified master with sentinelResetMaster(), and also change
  * the ip:port address, but take the name of the instance unmodified.
  *
@@ -1257,6 +1259,7 @@ int sentinelResetMasterAndChangeAddress(sentinelRedisInstance *master, char *ip,
     newaddr = createSentinelAddr(ip,port);
     if (newaddr == NULL) return REDIS_ERR;
 
+    // 保存从机实例
     /* Make a list of slaves to add back after the reset.
      * Don't include the one having the address we are switching to. */
     di = dictGetIterator(master->slaves);
@@ -1286,6 +1289,7 @@ int sentinelResetMasterAndChangeAddress(sentinelRedisInstance *master, char *ip,
     master->o_down_since_time = 0;
     master->s_down_since_time = 0;
 
+    // 恢复从机实例
     /* Add slaves back. */
     for (j = 0; j < numslaves; j++) {
         sentinelRedisInstance *slave;
@@ -1300,6 +1304,7 @@ int sentinelResetMasterAndChangeAddress(sentinelRedisInstance *master, char *ip,
     }
     zfree(slaves);
 
+    // 销毁旧的地址结构体
     /* Release the old address at the end so we are safe even if the function
      * gets the master->addr->ip and master->addr->port as arguments. */
     releaseSentinelAddr(oldaddr);
@@ -1629,6 +1634,7 @@ void sentinelDisconnectCallback(const redisAsyncContext *c, int status) {
     sentinelDisconnectInstanceFromContext(c);
 }
 
+// 发送验证信息
 /* Send the AUTH command with the specified master password if needed.
  * Note that for slaves the password set for the master is used.
  *
@@ -1645,6 +1651,7 @@ void sentinelSendAuthIfNeeded(sentinelRedisInstance *ri, redisAsyncContext *c) {
     }
 }
 
+// 重新与某个实例创建连接
 /* Create the async connections for the specified instance if the instance
  * is disconnected. Note that the SRI_DISCONNECTED flag is set even if just
  * one of the two links (commands and pub/sub) is missing. */
