@@ -129,6 +129,7 @@ typedef struct sentinelRedisInstance {
     mstime_t cc_conn_time; /* cc connection time. */
     mstime_t pc_conn_time; /* pc connection time. */
     mstime_t pc_last_activity; /* Last time we received any message. */
+    // 最近一次相应 PING 的时间
     mstime_t last_avail_time; /* Last time the instance replied to ping with
                                  a reply we consider valid. */
     mstime_t last_pong_time;  /* Last time the instance replied to ping,
@@ -500,7 +501,7 @@ int sentinelAddrIsEqual(sentinelAddr *a, sentinelAddr *b) {
 }
 
 /* =========================== Events notification ========================== */
-// 记录日志函数
+// 记录日志函数。哨兵需要日志以监控服务器的状态
 /* Send an event to log, pub/sub, user notification script.
  * 日志的级别
  * 'level' is the log level for logging. Only REDIS_WARNING events will trigger
@@ -1716,6 +1717,7 @@ void sentinelReconnectInstance(sentinelRedisInstance *ri) {
 
 /* ======================== Redis instances pinging  ======================== */
 
+// 判断 master 是否是检测主机的哨兵
 /* Return true if master looks "sane", that is:
  * 1) It is actually a master in the current configuration.
  * 2) It reports itself as a master.
@@ -1745,10 +1747,13 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
         sentinelRedisInstance *slave;
         sds l = lines[j];
 
+        // run_id 长度为 40，以 run_id 开头
         /* run_id:<40 hex chars>*/
         if (sdslen(l) >= 47 && !memcmp(l,"run_id:",7)) {
+            // 如果 ri 没有 run_id，则直接拷贝
             if (ri->runid == NULL) {
                 ri->runid = sdsnewlen(l+7,40);
+            // 如果 ri 有 run_id 且不同，则更新
             } else {
                 if (strncmp(ri->runid,l+7,40) != 0) {
                     sentinelEvent(REDIS_NOTICE,"+reboot",ri,"%@");
@@ -1758,6 +1763,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
             }
         }
 
+        // redis 对新旧版本格式做了兼容
         /* old versions: slave0:<ip>,<port>,<state>
          * new versions: slave0:ip=127.0.0.1,port=9999,... */
         if ((ri->flags & SRI_MASTER) &&
@@ -1766,6 +1772,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
         {
             char *ip, *port, *end;
 
+            // 旧版本
             if (strstr(l,"ip=") == NULL) {
                 /* Old format. */
                 ip = strchr(l,':'); if (!ip) continue;
@@ -1775,6 +1782,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
                 port++; /* Now port points to start of port number. */
                 end = strchr(port,','); if (!end) continue;
                 *end = '\0'; /* nul term for easy access. */
+            // 新版本
             } else {
                 /* New format. */
                 ip = strstr(l,"ip="); if (!ip) continue;
@@ -1786,6 +1794,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
                 end = strchr(port,','); if (end) *end = '\0';
             }
 
+            // 确认表里面已经存在此从机，否则需要创建实例
             /* Check if we already have this slave into our table,
              * otherwise add it. */
             if (sentinelRedisInstanceLookupSlave(ri,ip,atoi(port)) == NULL) {
@@ -1804,11 +1813,14 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
             ri->master_link_down_time = strtoll(l+31,NULL,10)*1000;
         }
 
+        // 上报自己的角色
         /* role:<role> */
         if (!memcmp(l,"role:master",11)) role = SRI_MASTER;
         else if (!memcmp(l,"role:slave",10)) role = SRI_SLAVE;
 
+        // 从机的情况
         if (role == SRI_SLAVE) {
+            // 主机的地址
             /* master_host:<host> */
             if (sdslen(l) >= 12 && !memcmp(l,"master_host:",12)) {
                 if (ri->slave_master_host == NULL ||
@@ -1820,6 +1832,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
                 }
             }
 
+            // 主机的端口
             /* master_port:<port> */
             if (sdslen(l) >= 12 && !memcmp(l,"master_port:",12)) {
                 int slave_master_port = atoi(l+12);
@@ -1830,6 +1843,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
                 }
             }
 
+            // 与主机的连接状态
             /* master_link_status:<status> */
             if (sdslen(l) >= 19 && !memcmp(l,"master_link_status:",19)) {
                 ri->slave_master_link_status =
@@ -1838,22 +1852,27 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
                     SENTINEL_MASTER_LINK_STATUS_DOWN;
             }
 
+            // 从机的优先级？？？
             /* slave_priority:<priority> */
             if (sdslen(l) >= 15 && !memcmp(l,"slave_priority:",15))
                 ri->slave_priority = atoi(l+15);
 
+            // 主从复制中会用到的参数，是同步数据的偏移量
             /* slave_repl_offset:<offset> */
             if (sdslen(l) >= 18 && !memcmp(l,"slave_repl_offset:",18))
                 ri->slave_repl_offset = strtoull(l+18,NULL,10);
         }
     }
+    // 刷新更新信息的时间
     ri->info_refresh = mstime();
+    // 释放资源
     sdsfreesplitres(lines,numlines);
 
     /* ---------------------------- Acting half -----------------------------
      * Some things will not happen if sentinel.tilt is true, but some will
      * still be processed. */
 
+    // 记录角色更新的时间，可能有时候 redis 会从主机变成从机
     /* Remember when the role changed. */
     if (role != ri->role_reported) {
         ri->role_reported_time = mstime();
@@ -1861,6 +1880,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
         if (role == SRI_SLAVE) ri->slave_conf_change_time = mstime();
     }
 
+    // 处理从主机到从机转变的情况，会触发一次故障转移？？？
     /* Handle master -> slave role switch. */
     if ((ri->flags & SRI_MASTER) && role == SRI_SLAVE) {
         /* Nothing to do, but masters claiming to be slaves are
@@ -1868,6 +1888,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
          * a failover will be triggered. */
     }
 
+    // 处理从从机到主机转变的情况
     /* Handle slave -> master role switch. */
     if ((ri->flags & SRI_SLAVE) && role == SRI_MASTER) {
         /* If this is a promoted slave we can change state to the
@@ -1901,6 +1922,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
                sentinelRedisInstanceNoDownFor(ri,wait_time) &&
                mstime() - ri->role_reported_time > wait_time)
             {
+                // 触发 SLAVEOF，继续将 ri 配置为从机
                 int retval = sentinelSendSlaveOf(ri,
                         ri->master->addr->ip,
                         ri->master->addr->port);
@@ -1910,6 +1932,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
         }
     }
 
+    // 从机连接的主机有所变更，需要停止主从复制，并触发 SLAVEOF
     /* Handle slaves replicating to a different master address. */
     if ((ri->flags & SRI_SLAVE) && !sentinel.tilt &&
         role == SRI_SLAVE &&
@@ -1932,6 +1955,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
         }
     }
 
+    // ？？？
     /* None of the following conditions are processed when in tilt mode, so
      * return asap. */
     if (sentinel.tilt) return;
@@ -1964,6 +1988,7 @@ void sentinelRefreshInstanceInfo(sentinelRedisInstance *ri, const char *info) {
     }
 }
 
+// INFO 回复回调函数？？？
 void sentinelInfoReplyCallback(redisAsyncContext *c, void *reply, void *privdata) {
     sentinelRedisInstance *ri = c->data;
     redisReply *r;
@@ -1977,6 +2002,8 @@ void sentinelInfoReplyCallback(redisAsyncContext *c, void *reply, void *privdata
     }
 }
 
+
+// INFO 取消回复回调函数？？？
 /* Just discard the reply. We use this when we are not monitoring the return
  * value of the command but its effects directly. */
 void sentinelDiscardReplyCallback(redisAsyncContext *c, void *reply, void *privdata) {
@@ -1989,7 +2016,9 @@ void sentinelPingReplyCallback(redisAsyncContext *c, void *reply, void *privdata
     sentinelRedisInstance *ri = c->data;
     redisReply *r;
 
+    // 待执行命令个数自减
     if (ri) ri->pending_commands--;
+    // 无需回复的情况
     if (!reply || !ri) return;
     r = reply;
 
@@ -2001,8 +2030,10 @@ void sentinelPingReplyCallback(redisAsyncContext *c, void *reply, void *privdata
             strncmp(r->str,"LOADING",7) == 0 ||
             strncmp(r->str,"MASTERDOWN",10) == 0)
         {
+            // 更新“带回复内容响应 PING ”的时间，即 reply 不为空
             ri->last_avail_time = mstime();
         } else {
+            // 服务器忙？？？
             /* Send a SCRIPT KILL command if the instance appears to be
              * down because of a busy script. */
             if (strncmp(r->str,"BUSY",4) == 0 &&
@@ -2017,9 +2048,11 @@ void sentinelPingReplyCallback(redisAsyncContext *c, void *reply, void *privdata
             }
         }
     }
+    // 更新最近一次响应 PING 的时间
     ri->last_pong_time = mstime();
 }
 
+// ？？？
 /* This is called when we get the reply about the PUBLISH command we send
  * to the master to advertise this sentinel. */
 void sentinelPublishReplyCallback(redisAsyncContext *c, void *reply, void *privdata) {
