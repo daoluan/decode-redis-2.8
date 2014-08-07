@@ -2230,10 +2230,12 @@ void sentinelPingInstance(sentinelRedisInstance *ri) {
     mstime_t info_period;
     int retval;
 
+    // 断开连接，立即返回
     /* Return ASAP if we have already a PING or INFO already pending, or
      * in the case the instance is not properly connected. */
     if (ri->flags & SRI_DISCONNECTED) return;
 
+    // 阻塞的 INFO,PING,PUBLISH 命令超出了一定范围，立即返回
     /* For INFO, PING, PUBLISH that are not critical commands to send we
      * also have a limit of SENTINEL_MAX_PENDING_COMMANDS. We don't
      * want to use a lot of memory just because a link is not working
@@ -2242,6 +2244,7 @@ void sentinelPingInstance(sentinelRedisInstance *ri) {
      * timeout condition is detected. */
     if (ri->pending_commands >= SENTINEL_MAX_PENDING_COMMANDS) return;
 
+    // 增大监控从机的频率
     /* If this is a slave of a master in O_DOWN condition we start sending
      * it INFO every second, instead of the usual SENTINEL_INFO_PERIOD
      * period. In this state we want to closely monitor slaves in case they
@@ -2253,6 +2256,7 @@ void sentinelPingInstance(sentinelRedisInstance *ri) {
         info_period = SENTINEL_INFO_PERIOD;
     }
 
+    // 发送 INFO 超时，则发送一个 INFO 命令
     if ((ri->flags & SRI_SENTINEL) == 0 &&
         (ri->info_refresh == 0 ||
         (now - ri->info_refresh) > info_period))
@@ -2262,12 +2266,16 @@ void sentinelPingInstance(sentinelRedisInstance *ri) {
             sentinelInfoReplyCallback, NULL, "INFO");
         if (retval != REDIS_OK) return;
         ri->pending_commands++;
+
+    // 发送 PING 超时，则发送一个 PING 命令
     } else if ((now - ri->last_pong_time) > SENTINEL_PING_PERIOD) {
         /* Send PING to all the three kinds of instances. */
         retval = redisAsyncCommand(ri->cc,
             sentinelPingReplyCallback, NULL, "PING");
         if (retval != REDIS_OK) return;
         ri->pending_commands++;
+
+    // hello 超时，则向主从机发送一个 hello
     } else if ((ri->flags & SRI_SENTINEL) == 0 &&
                (now - ri->last_pub_time) > SENTINEL_PUBLISH_PERIOD)
     {
@@ -2278,6 +2286,7 @@ void sentinelPingInstance(sentinelRedisInstance *ri) {
 
 /* =========================== SENTINEL command ============================= */
 
+// 将故障转移状态码转换为字符串
 const char *sentinelFailoverStateStr(int state) {
     switch(state) {
     case SENTINEL_FAILOVER_STATE_NONE: return "none";
@@ -2291,7 +2300,7 @@ const char *sentinelFailoverStateStr(int state) {
     }
 }
 
-// 报告 redis 服务器的状态
+// 报告此哨兵监控的 redis 服务器状态
 /* Redis instance to Redis protocol representation. */
 void addReplySentinelRedisInstance(redisClient *c, sentinelRedisInstance *ri) {
     char *flags = sdsempty();
@@ -2450,7 +2459,7 @@ void addReplySentinelRedisInstance(redisClient *c, sentinelRedisInstance *ri) {
     setDeferredMultiBulkLength(c,mbl,fields*2);
 }
 
-// 报告所有主机的状态
+// 报告哈希表内所有主机的状态
 /* Output a number of instances contained inside a dictionary as
  * Redis protocol. */
 void addReplyDictOfRedisInstances(redisClient *c, dict *instances) {
@@ -2493,7 +2502,7 @@ void sentinelCommand(redisClient *c) {
         // 报告所有主机的状态
         addReplyDictOfRedisInstances(c,sentinel.masters);
     } else if (!strcasecmp(c->argv[1]->ptr,"slaves")) {
-        // 命令为 sentinel SLAVES <主机名字>
+        // 命令为 sentinel SLAVES <主机名字>，报告某个主机的所有从机
         /* SENTINEL SLAVES <master-name> */
         sentinelRedisInstance *ri;
 
@@ -2518,6 +2527,7 @@ void sentinelCommand(redisClient *c) {
         // 报告监视 <master-name> 的所有哨兵
         addReplyDictOfRedisInstances(c,ri->sentinels);
     } else if (!strcasecmp(c->argv[1]->ptr,"is-master-down-by-addr")) {
+        // 命令为 sentinel IS-MASTER-DOWN-BY-ADDR <主机 ip> <current-epoch> <runid>
         /* SENTINEL IS-MASTER-DOWN-BY-ADDR <ip> <port> <current-epoch> <runid> */
         sentinelRedisInstance *ri;
         long long req_epoch;
@@ -2526,6 +2536,7 @@ void sentinelCommand(redisClient *c) {
         long port;
         int isdown = 0;
 
+        // 参数处理
         if (c->argc != 6) goto numargserr;
         if (getLongFromObjectOrReply(c,c->argv[3],&port,NULL) != REDIS_OK ||
             getLongLongFromObjectOrReply(c,c->argv[4],&req_epoch,NULL)
@@ -2534,12 +2545,14 @@ void sentinelCommand(redisClient *c) {
         ri = getSentinelRedisInstanceByAddrAndRunID(sentinel.masters,
             c->argv[2]->ptr,port,NULL);
 
+
         /* It exists? Is actually a master? Is subjectively down? It's down.
          * Note: if we are in tilt mode we always reply with "0". */
         if (!sentinel.tilt && ri && (ri->flags & SRI_S_DOWN) &&
                                     (ri->flags & SRI_MASTER))
             isdown = 1;
 
+        // 选举一个集群首领
         /* Vote for the master (or fetch the previous vote) if the request
          * includes a runid, otherwise the sender is not seeking for a vote. */
         if (ri && ri->flags & SRI_MASTER && strcasecmp(c->argv[5]->ptr,"*")) {
@@ -2548,6 +2561,7 @@ void sentinelCommand(redisClient *c) {
                                             &leader_epoch);
         }
 
+        // 回复内容：在线状态，集群首领，投票的时间？？？
         /* Reply with a three-elements multi-bulk reply:
          * down state, leader, vote epoch. */
         addReplyMultiBulkLen(c,3);
@@ -2556,10 +2570,12 @@ void sentinelCommand(redisClient *c) {
         addReplyLongLong(c, (long long)leader_epoch);
         if (leader) sdsfree(leader);
     } else if (!strcasecmp(c->argv[1]->ptr,"reset")) {
+        // 重置？？？
         /* SENTINEL RESET <pattern> */
         if (c->argc != 3) goto numargserr;
         addReplyLongLong(c,sentinelResetMastersByPattern(c->argv[2]->ptr,SENTINEL_GENERATE_EVENT));
     } else if (!strcasecmp(c->argv[1]->ptr,"get-master-addr-by-name")) {
+        // 依据名字，获取主机的信息
         /* SENTINEL GET-MASTER-ADDR-BY-NAME <master-name> */
         sentinelRedisInstance *ri;
 
@@ -2577,6 +2593,7 @@ void sentinelCommand(redisClient *c) {
             addReplyBulkLongLong(c,addr->port);
         }
     } else if (!strcasecmp(c->argv[1]->ptr,"failover")) {
+        // 执行故障转移
         /* SENTINEL FAILOVER <master-name> */
         sentinelRedisInstance *ri;
 
@@ -2598,10 +2615,12 @@ void sentinelCommand(redisClient *c) {
         redisLog(REDIS_WARNING,"Executing user requested FAILOVER of '%s'",
             ri->name);
 
+        // 执行故障转移
         sentinelStartFailover(ri);
         ri->flags |= SRI_FORCE_FAILOVER;
         addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"pending-scripts")) {
+        // 查看待执行的脚本
         /* SENTINEL PENDING-SCRIPTS */
 
         if (c->argc != 2) goto numargserr;
@@ -2617,6 +2636,7 @@ numargserr:
                           (char*)c->argv[1]->ptr);
 }
 
+// 报告哨兵监视的综合信息，不是非常全面
 void sentinelInfoCommand(redisClient *c) {
     char *section = c->argc == 2 ? c->argv[1]->ptr : "default";
     sds info = sdsempty();
@@ -2678,10 +2698,17 @@ void sentinelInfoCommand(redisClient *c) {
 
 /* ===================== SENTINEL availability checks ======================= */
 
+// 仅从我们主观的判断检测 redis 服务器是否宕机
 /* Is this instance down from our point of view? */
 void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
     mstime_t elapsed = mstime() - ri->last_avail_time;
 
+
+    // 检测是否有必要断开服务器
+    // 1）距离上次连接的时间超过了预定时间 SENTINEL_MIN_LINK_RECONNECT_PERIOD
+            // 并且，
+            // 心跳断开时间过长，
+    // 则断开
     /* Check if we are in need for a reconnection of one of the
      * links, because we are detecting low activity.
      *
@@ -2695,6 +2722,10 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
         sentinelKillLink(ri,ri->cc);
     }
 
+    // 2）pub 通道距离上连接时间超过了 SENTINEL_MIN_LINK_RECONNECT_PERIOD
+            // 并且，
+            // 此通道上有一段时间没有通信了
+    // 则断开
     /* 2) Check if the pubsub link seems connected, was connected not less
      *    than SENTINEL_MIN_LINK_RECONNECT_PERIOD, but still we have no
      *    activity in the Pub/Sub channel for more than
@@ -2707,6 +2738,7 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
         sentinelKillLink(ri,ri->pc);
     }
 
+    // http://redis.io/topics/sentinel
     /* Update the SDOWN flag. We believe the instance is SDOWN if:
      *
      * 1) It is not replying.
@@ -2719,6 +2751,7 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
          mstime() - ri->role_reported_time >
           (ri->down_after_period+SENTINEL_INFO_PERIOD*2)))
     {
+        // “应该已经断线了”
         /* Is subjectively down */
         if ((ri->flags & SRI_S_DOWN) == 0) {
             sentinelEvent(REDIS_WARNING,"+sdown",ri,"%@");
@@ -2726,6 +2759,7 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
             ri->flags |= SRI_S_DOWN;
         }
     } else {
+        // “应该还在线”
         /* Is subjectively up */
         if (ri->flags & SRI_S_DOWN) {
             sentinelEvent(REDIS_WARNING,"-sdown",ri,"%@");
