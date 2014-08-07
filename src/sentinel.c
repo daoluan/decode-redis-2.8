@@ -2768,6 +2768,7 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
     }
 }
 
+// 依据多个哨兵监视主机的状态以决定主机的在线状态
 /* Is this instance down according to the configured quorum?
  *
  * Note that ODOWN is a weak quorum, it only means that enough Sentinels
@@ -2779,10 +2780,14 @@ void sentinelCheckObjectivelyDown(sentinelRedisInstance *master) {
     dictEntry *de;
     int quorum = 0, odown = 0;
 
+    // 足够多的哨兵报告主机下线了，则设置 Objectively down 标记
     if (master->flags & SRI_S_DOWN) {
+        // 此哨兵本身认为 redis 服务器下线了
         /* Is down for enough sentinels? */
         quorum = 1; /* the current sentinel. */
         /* Count all the other sentinels. */
+
+        // 查看其它哨兵报告的状况
         di = dictGetIterator(master->sentinels);
         while((de = dictNext(di)) != NULL) {
             sentinelRedisInstance *ri = dictGetVal(de);
@@ -2790,11 +2795,14 @@ void sentinelCheckObjectivelyDown(sentinelRedisInstance *master) {
             if (ri->flags & SRI_MASTER_DOWN) quorum++;
         }
         dictReleaseIterator(di);
+
+        // 足够多的哨兵报告主机下线了，设置标记
         if (quorum >= master->quorum) odown = 1;
     }
 
     /* Set the flag accordingly to the outcome. */
     if (odown) {
+        // 写日志，设置 SRI_O_DOWN
         if ((master->flags & SRI_O_DOWN) == 0) {
             sentinelEvent(REDIS_WARNING,"+odown",master,"%@ #quorum %d/%d",
                 quorum, master->quorum);
@@ -2802,6 +2810,7 @@ void sentinelCheckObjectivelyDown(sentinelRedisInstance *master) {
             master->o_down_since_time = mstime();
         }
     } else {
+        // 写日志，取消 SRI_O_DOWN
         if (master->flags & SRI_O_DOWN) {
             sentinelEvent(REDIS_WARNING,"-odown",master,"%@");
             master->flags &= ~SRI_O_DOWN;
@@ -2809,6 +2818,7 @@ void sentinelCheckObjectivelyDown(sentinelRedisInstance *master) {
     }
 }
 
+// 询问其它哨兵某个主机是否下线函数的回调函数，详见下一个函数
 /* Receive the SENTINEL is-master-down-by-addr reply, see the
  * sentinelAskMasterStateToOtherSentinels() function for more information. */
 void sentinelReceiveIsMasterDownReply(redisAsyncContext *c, void *reply, void *privdata) {
@@ -2848,6 +2858,7 @@ void sentinelReceiveIsMasterDownReply(redisAsyncContext *c, void *reply, void *p
     }
 }
 
+// 询问其它哨兵某个主机是否下线
 /* If we think the master is down, we start sending
  * SENTINEL IS-MASTER-DOWN-BY-ADDR requests to other sentinels
  * in order to get the replies that allow to reach the quorum
@@ -2857,13 +2868,16 @@ void sentinelAskMasterStateToOtherSentinels(sentinelRedisInstance *master, int f
     dictIterator *di;
     dictEntry *de;
 
+    // 遍历所有的哨兵
     di = dictGetIterator(master->sentinels);
     while((de = dictNext(di)) != NULL) {
         sentinelRedisInstance *ri = dictGetVal(de);
+        // 计算距离上一次询问的时间
         mstime_t elapsed = mstime() - ri->last_master_down_reply_time;
         char port[32];
         int retval;
 
+        // 倘若距离上一次询问的时间太过长，代表其报告主机的在线状态可能已经过时了
         /* If the master state from other sentinel is too old, we clear it. */
         if (elapsed > SENTINEL_ASK_PERIOD*5) {
             ri->flags &= ~SRI_MASTER_DOWN;
@@ -2876,12 +2890,16 @@ void sentinelAskMasterStateToOtherSentinels(sentinelRedisInstance *master, int f
          * 1) We believe it is down, or there is a failover in progress.
          * 2) Sentinel is connected.
          * 3) We did not received the info within SENTINEL_ASK_PERIOD ms. */
+        // 主机尚未被标记为下线，就没必要询问了
         if ((master->flags & SRI_S_DOWN) == 0) continue;
+        // 跳过哨兵服务器下线
         if (ri->flags & SRI_DISCONNECTED) continue;
+        // 上一次询问其他哨兵的服务器在线状态将保持一段时间有效
         if (!(flags & SENTINEL_ASK_FORCED) &&
             mstime() - ri->last_master_down_reply_time < SENTINEL_ASK_PERIOD)
             continue;
 
+        // 询问其他哨兵
         /* Ask */
         ll2string(port,sizeof(port),master->addr->port);
         retval = redisAsyncCommand(ri->cc,
@@ -2896,6 +2914,7 @@ void sentinelAskMasterStateToOtherSentinels(sentinelRedisInstance *master, int f
     dictReleaseIterator(di);
 }
 
+// 故障转移类函数
 /* =============================== FAILOVER ================================= */
 
 /* Vote for the sentinel with 'req_runid' or return the old vote if already
@@ -2905,18 +2924,24 @@ void sentinelAskMasterStateToOtherSentinels(sentinelRedisInstance *master, int f
  * runid and populate the leader_epoch with the epoch of the vote. */
 char *sentinelVoteLeader(sentinelRedisInstance *master, uint64_t req_epoch, char *req_runid, uint64_t *leader_epoch) {
     if (req_epoch > sentinel.current_epoch) {
+        // 更新 epoch。epoch 是一个版本信息
         sentinel.current_epoch = req_epoch;
+        // 写日志
         sentinelEvent(REDIS_WARNING,"+new-epoch",master,"%llu",
             (unsigned long long) sentinel.current_epoch);
     }
 
+    // 收到一个更新的版本
     if (master->leader_epoch < req_epoch && sentinel.current_epoch <= req_epoch)
     {
         sdsfree(master->leader);
         master->leader = sdsnew(req_runid);
         master->leader_epoch = sentinel.current_epoch;
+        // 写日志
         sentinelEvent(REDIS_WARNING,"+vote-for-leader",master,"%s %llu",
             master->leader, (unsigned long long) master->leader_epoch);
+
+
         /* If we did not voted for ourselves, set the master failover start
          * time to now, in order to force a delay before we can start a
          * failover for the same master. */
