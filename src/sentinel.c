@@ -2781,8 +2781,7 @@ void sentinelCheckObjectivelyDown(sentinelRedisInstance *master) {
     int quorum = 0, odown = 0;
 
     // 足够多的哨兵报告主机下线了，则设置 Objectively down 标记
-    if (master->flags & SRI_S_DOWN) {
-        // 此哨兵本身认为 redis 服务器下线了
+    if (master->flags & SRI_S_DOWN) { // 此哨兵本身认为 redis 服务器下线了
         /* Is down for enough sentinels? */
         quorum = 1; /* the current sentinel. */
         /* Count all the other sentinels. */
@@ -2931,12 +2930,13 @@ char *sentinelVoteLeader(sentinelRedisInstance *master, uint64_t req_epoch, char
             (unsigned long long) sentinel.current_epoch);
     }
 
-    // 收到一个更新的版本
+    // 当前哨兵所监视服务器的首领版本较小，则替换之
     if (master->leader_epoch < req_epoch && sentinel.current_epoch <= req_epoch)
     {
         sdsfree(master->leader);
         master->leader = sdsnew(req_runid);
         master->leader_epoch = sentinel.current_epoch;
+
         // 写日志
         sentinelEvent(REDIS_WARNING,"+vote-for-leader",master,"%s %llu",
             master->leader, (unsigned long long) master->leader_epoch);
@@ -2949,8 +2949,9 @@ char *sentinelVoteLeader(sentinelRedisInstance *master, uint64_t req_epoch, char
             master->failover_start_time = mstime();
     }
 
+    // 当前哨兵所监视服务器的版本和 runid 回传给调用者
     *leader_epoch = master->leader_epoch;
-    return master->leader ? sdsnew(master->leader) : NULL;
+    return master->leader ? sdsnew(master->leader) : NULL /*返回 NULL 投票被禁用了*/;
 }
 
 struct sentinelLeader {
@@ -2958,6 +2959,7 @@ struct sentinelLeader {
     unsigned long votes;
 };
 
+// 给 runid 主机增加投票
 /* Helper function for sentinelGetLeader, increment the counter
  * relative to the specified runid. */
 int sentinelLeaderIncr(dict *counters, char *runid) {
@@ -2995,6 +2997,7 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
     redisAssert(master->flags & (SRI_O_DOWN|SRI_FAILOVER_IN_PROGRESS));
     counters = dictCreate(&leaderVotesDictType,NULL);
 
+    // 统计投票结果
     /* Count other sentinels votes */
     di = dictGetIterator(master->sentinels);
     while((de = dictNext(di)) != NULL) {
@@ -3005,6 +3008,9 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
     }
     dictReleaseIterator(di);
 
+    // 计算得票最多的服务器。成为首领有两个条件：
+    // 1、获得票数占半数以上
+    // 2、多于 quorum。当超过 quorum 数量的哨兵认为服务器下线时，服务器被标记为 SRI_O_DOWN
     /* Check what's the winner. For the winner to win, it needs two conditions:
      * 1) Absolute majority between voters (50% + 1).
      * 2) And anyway at least master->quorum votes. */
@@ -3019,34 +3025,43 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
     }
     dictReleaseIterator(di);
 
+    // 如果负责获取首领的此哨兵尚未投票，那它的那一票就属于当前投票数最多的服务器了
     /* Count this Sentinel vote:
      * if this Sentinel did not voted yet, either vote for the most
      * common voted sentinel, or for itself if no vote exists at all. */
     if (winner)
+        // sentinelVoteLeader() 会将比较哨兵版本，从而替换版本和 runid，会返回较大版本的 runnid，会通过参数回传较大的版本
         myvote = sentinelVoteLeader(master,epoch,winner,&leader_epoch);
     else
         myvote = sentinelVoteLeader(master,epoch,server.runid,&leader_epoch);
 
+    // 回传的版本和此函数指定的版本相同，说明当前得票数最多的服务器夺得一票
     if (myvote && leader_epoch == epoch) {
         uint64_t votes = sentinelLeaderIncr(counters,myvote);
 
+        // 更新投票最多的服务器票数
         if (votes > max_votes) {
             max_votes = votes;
             winner = myvote;
         }
     }
+    // 增加投票人总数
     voters++; /* Anyway, count me as one of the voters. */
 
+    // 上面所提到的两个条件，如果不满足，则无法选出首领是·
     voters_quorum = voters/2+1;
     if (winner && (max_votes < voters_quorum || max_votes < master->quorum))
         winner = NULL;
 
-    winner = winner ? sdsnew(winner) : NULL;
+    winner = winner ? sdsnew(winner) : NULL; // 为了返回 sds，而不是 char *
+    // 释放资源
     sdsfree(myvote);
     dictRelease(counters);
+
     return winner;
 }
 
+// 哨兵向某个服务器发送 SLAVEOF 命令，意即将某个服务器转变为从机
 /* Send SLAVEOF to the specified instance, always followed by a
  * CONFIG REWRITE command in order to store the new configuration on disk
  * when possible (that is, if the Redis instance is recent enough to support
@@ -3085,12 +3100,19 @@ int sentinelSendSlaveOf(sentinelRedisInstance *ri, char *host, int port) {
 void sentinelStartFailover(sentinelRedisInstance *master) {
     redisAssert(master->flags & SRI_MASTER);
 
+    // 故障修复状态标记为等待开始
     master->failover_state = SENTINEL_FAILOVER_STATE_WAIT_START;
+    // 标记为将要执行故障修复
     master->flags |= SRI_FAILOVER_IN_PROGRESS;
+    // 更新版本
     master->failover_epoch = ++sentinel.current_epoch;
+
+    // 写日志
     sentinelEvent(REDIS_WARNING,"+new-epoch",master,"%llu",
         (unsigned long long) sentinel.current_epoch);
     sentinelEvent(REDIS_WARNING,"+try-failover",master,"%@");
+
+    // 记录时间
     master->failover_start_time = mstime();
     master->failover_state_change_time = mstime();
 }
@@ -3597,6 +3619,7 @@ void sentinelCheckTiltCondition(void) {
     sentinel.previous_time = mstime();
 }
 
+// 哨兵定时程序
 void sentinelTimer(void) {
     sentinelCheckTiltCondition();
     sentinelHandleDictOfRedisInstances(sentinel.masters);
