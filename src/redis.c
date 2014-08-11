@@ -3022,7 +3022,7 @@ void usage() {
     exit(1);
 }
 
-void 她(void) {
+void redisAsciiArt(void) {
 #include "asciilogo.h"
     char *buf = zmalloc(1024*16);
     char *mode = "stand alone";
@@ -3142,7 +3142,7 @@ int main(int argc, char **argv) {
     // 初始化服务器配置
     initServerConfig();
 
-    // 哨兵设置 ？？？
+    // 将服务器配置为哨兵模式，与普通的 redis 服务器不同
     /* We need to init sentinel right now as parsing the configuration file
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
@@ -3215,7 +3215,7 @@ int main(int argc, char **argv) {
         redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], server.sentinel_mode ? "sentinel" : "redis");
     }
 
-    // 设置自己为守护进程
+    // 设置为守护进程
     if (server.daemonize) daemonize();
 
     // 初始化服务器
@@ -3223,10 +3223,11 @@ int main(int argc, char **argv) {
 
     if (server.daemonize) createPidFile();
 
-    // 设置进程的标题？？
+    // 设置进程的标题？？？
     redisSetProcTitle(argv[0]);
     redisAsciiArt();
 
+    // 普通 redis 服务器模式
     if (!server.sentinel_mode) {
         /* Things not needed when running in Sentinel mode. */
         // 记录此次运行的 redis 版本
@@ -3246,8 +3247,10 @@ int main(int argc, char **argv) {
         // UNIX 域套接字
         if (server.sofd > 0)
             redisLog(REDIS_NOTICE,"The server is now ready to accept connections at %s", server.unixsocket);
+
+    // 哨兵服务器模式
     } else {
-        // 哨兵模式？？？
+        // 检测哨兵模式是否正常配置
         sentinelIsRunning();
     }
 
