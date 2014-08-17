@@ -2084,7 +2084,7 @@ int processCommand(redisClient *c) {
     }
 
     // 在订阅发布模式下，只允许处理 SUBSCRIBE 或者 UNSUBSCRIBE 命令
-    // 从下面的检测条件可以看出：只要存在 redisClient.pubsub_channels 或者 redisClient.pubsub_patterns，就代表处于订阅发布模式下
+    // 从下面的检测条件可以看出：对于一个连接，一个 redisClient 只要存在 redisClient.pubsub_channels 或者 redisClient.pubsub_patterns，就代表处于订阅发布模式下，其就不能处理订阅之外的命令了
     /* Only allow SUBSCRIBE and UNSUBSCRIBE in the context of Pub/Sub */
     if ((dictSize(c->pubsub_channels) > 0 || listLength(c->pubsub_patterns) > 0)
         &&
