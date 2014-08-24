@@ -45,12 +45,22 @@
 #define DICT_NOTUSED(V) ((void) V)
 
 typedef struct dictEntry {
+    // 键
     void *key;
+
+    // 值
+    // 注意，这是很酷的一个用法，在不同的场景面前能很好的适应，语意非常清晰
+    // 譬如 dictEntry 存储的是一个有符号整数，那么 dictEntry.v.s64
+    // 譬如 dictEntry 存储的是一个无符号整数，那么 dictEntry.v.us64
+    // 譬如 dictEntry 存储的一块数据，那么 dictEntry.v.val
+    // 对于需要应付多种数据类型的数据结构，可以采用这种方法
     union {
         void *val;
         uint64_t u64;
         int64_t s64;
     } v;
+
+    // 相当于链表的 next
     struct dictEntry *next;
 } dictEntry;
 
@@ -58,14 +68,19 @@ typedef struct dictType {
     // 哈希函数
     unsigned int (*hashFunction)(const void *key);
 
+    // 键拷贝函数
     void *(*keyDup)(void *privdata, const void *key);
+
+    // 值拷贝函数
     void *(*valDup)(void *privdata, const void *obj);
 
     // 比较函数
     int (*keyCompare)(void *privdata, const void *key1, const void *key2);
 
-    // 键值析构函数
+    // 键析构函数
     void (*keyDestructor)(void *privdata, void *key);
+
+    // 值析构函数
     void (*valDestructor)(void *privdata, void *obj);
 } dictType;
 
@@ -124,6 +139,13 @@ typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
     if ((d)->type->valDestructor) \
         (d)->type->valDestructor((d)->privdata, (entry)->v.val)
 
+// define 中 do while(0) 的做法写 C 语言的同学应该非常熟悉。为的是适应下面的
+// 用法：
+// if(conditions)
+//     DO_SOMETHING();
+// else
+//     DO_OTHERTHING();
+// 假如 define 里面有多条语句，上面的用法也不会出现语法或者语意错误。
 #define dictSetVal(d, entry, _val_) do { \
     if ((d)->type->valDup) \
         entry->v.val = (d)->type->valDup((d)->privdata, _val_); \

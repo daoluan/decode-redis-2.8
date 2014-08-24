@@ -867,7 +867,7 @@ struct redisServer {
     // 同步网络 IO 超时时间
     int repl_syncio_timeout; /* Timeout for synchronous I/O calls */
 
-    // 作为从机的状态
+    // 作为从机连接主机的状态
     int repl_state;          /* Replication status if the instance is a slave */
 
     // 传输的 RDB 文件大小
