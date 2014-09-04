@@ -173,9 +173,11 @@ void spt_init(int argc, char *argv[]) {
 		end = envp[i] + strlen(envp[i]) + 1;
 	}
 
+	// 拷贝命令
 	if (!(SPT.arg0 = strdup(argv[0])))
 		goto syerr;
 
+// GNUC 的情况，一般 Unix/Linux 系统有自带这些 GNU 库
 #if __GLIBC__
 	if (!(tmp = strdup(program_invocation_name)))
 		goto syerr;

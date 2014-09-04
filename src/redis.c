@@ -979,6 +979,9 @@ void databasesCron(void) {
  */
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
+    // REDIS_NOTUSED 是一个弃用的宏，下面三个参数都是被弃用的。因为函数的参数
+    // 没有使用，有些编译器会报警告，void args 是一个空操作，以此去除警告
+    // #define REDIS_NOTUSED(V) ((void) V)
     REDIS_NOTUSED(eventLoop);
     REDIS_NOTUSED(id);
     REDIS_NOTUSED(clientData);
@@ -1169,6 +1172,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         if (server.sentinel_mode) sentinelTimer();
     }
 
+    // 定时程序循环的次数
     server.cronloops++;
     return 1000/server.hz;
 }
@@ -1299,6 +1303,7 @@ void initServerConfig() {
     // 初始化 N 多的选项
     int j;
 
+    // 分配 runid，相当于一个 redis 服务器的 key
     getRandomHexChars(server.runid,REDIS_RUN_ID_SIZE);
     server.configfile = NULL;
     server.hz = REDIS_DEFAULT_HZ;
@@ -3077,7 +3082,10 @@ void memtest(size_t megabytes, int passes);
 int checkForSentinelMode(int argc, char **argv) {
     int j;
 
+    // 命令为 redis-sentinel，即可明确它是一个哨兵服务器
     if (strstr(argv[0],"redis-sentinel") != NULL) return 1;
+
+    // 或者添加了 --sentinel 选项，也可明确它是一个哨兵服务器
     for (j = 1; j < argc; j++)
         if (!strcmp(argv[j],"--sentinel")) return 1;
     return 0;
@@ -3133,13 +3141,15 @@ int main(int argc, char **argv) {
     // 设置内存泄露的回调函数
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
 
-    // 随机种子
+    // 随机种子，一般 rand() 产生随机数的函数会用到
     srand(time(NULL)^getpid());
     gettimeofday(&tv,NULL);
     dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
+
+    // 通过命令行参数确认是否启动哨兵模式
     server.sentinel_mode = checkForSentinelMode(argc,argv);
 
-    // 初始化服务器配置
+    // 初始化服务器配置，主要是填充 redisServer 结构体中的各种参数
     initServerConfig();
 
     // 将服务器配置为哨兵模式，与普通的 redis 服务器不同
@@ -3147,6 +3157,7 @@ int main(int argc, char **argv) {
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
     if (server.sentinel_mode) {
+        // initSentinelConfig() 只指定哨兵服务器的端口
         initSentinelConfig();
         initSentinel();
     }
@@ -3176,7 +3187,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        // 指定redis 配置文件
+        // 指定 redis 配置文件
         /* First argument is the config file name? */
         if (argv[j][0] != '-' || argv[j][1] != '-')
             configfile = argv[j++];
@@ -3209,13 +3220,13 @@ int main(int argc, char **argv) {
         // 释放内存。options 配置已经在上一句中保存
         sdsfree(options);
 
-        // 记录配置文件
+        // 用绝对路径记录配置文件
         if (configfile) server.configfile = getAbsolutePath(configfile);
     } else {
         redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], server.sentinel_mode ? "sentinel" : "redis");
     }
 
-    // 设置为守护进程
+    // 将服务器设置为守护进程
     if (server.daemonize) daemonize();
 
     // 初始化服务器
@@ -3254,6 +3265,7 @@ int main(int argc, char **argv) {
         sentinelIsRunning();
     }
 
+    // 提示用户是否搞错了，内存限制值设置的太小
     /* Warning the user about suspicious maxmemory setting. */
     if (server.maxmemory > 0 && server.maxmemory < 1024*1024) {
         redisLog(REDIS_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);

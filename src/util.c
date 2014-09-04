@@ -383,6 +383,7 @@ void getRandomHexChars(char *p, unsigned int len) {
         struct timeval tv;
         pid_t pid = getpid();
 
+        // runid 和时间和进程 id 相关
         /* Use time and PID to fill the initial array. */
         gettimeofday(&tv,NULL);
         if (l >= sizeof(tv.tv_usec)) {
@@ -405,6 +406,8 @@ void getRandomHexChars(char *p, unsigned int len) {
         for (j = 0; j < len; j++)
             p[j] ^= rand();
     }
+
+    // 转成十六进制
     /* Turn it into hex digits taking just 4 bits out of 8 for every byte. */
     for (j = 0; j < len; j++)
         p[j] = charset[p[j] & 0x0F];
@@ -425,10 +428,10 @@ sds getAbsolutePath(char *filename) {
 
     relpath = sdstrim(relpath," \r\n\t");
 
-    // 本来就是绝对地址。有没有考虑windows 的情况？？？？？
+    // 本来就是绝对地址
     if (relpath[0] == '/') return relpath; /* Path is already absolute. */
 
-    // getcwd() 可以获取绝对路径
+    // getcwd() 函数是系统提供的，可以获取目录
     /* If path is relative, join cwd and relative path. */
     if (getcwd(cwd,sizeof(cwd)) == NULL) {
         sdsfree(relpath);
