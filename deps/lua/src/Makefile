@@ -1,3 +1,4 @@
+# lua 解释器源码
 # makefile for building Lua
 # see ../INSTALL for installation instructions
 # see ../Makefile and luaconf.h for further customization
