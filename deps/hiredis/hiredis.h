@@ -133,6 +133,7 @@ typedef struct redisReader {
     int ridx; /* Index of current read task */
     void *reply; /* Temporary reply pointer */
 
+    // 释放内存函数
     redisReplyObjectFunctions *fn;
     void *privdata;
 } redisReader;
@@ -160,13 +161,20 @@ int redisvFormatCommand(char **target, const char *format, va_list ap);
 int redisFormatCommand(char **target, const char *format, ...);
 int redisFormatCommandArgv(char **target, int argc, const char **argv, const size_t *argvlen);
 
+// redis 连接上下文
 /* Context for a connection to Redis */
 typedef struct redisContext {
+    // 错误类型
     int err; /* Error flags, 0 when there is no error */
+    // 错误字符串
     char errstr[128]; /* String representation of error when applicable */
+    // 套接字
     int fd;
+    // 标记
     int flags;
+    // 写缓存
     char *obuf; /* Write buffer */
+    // redis 通信协议专用的读对象，里面维护读取的内容
     redisReader *reader; /* Protocol reader */
 } redisContext;
 

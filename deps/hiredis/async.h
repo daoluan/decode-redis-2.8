@@ -63,9 +63,11 @@ typedef void (redisConnectCallback)(const struct redisAsyncContext*, int status)
 // 异步连接上下文结构体
 /* Context for an async connection to Redis */
 typedef struct redisAsyncContext {
+    // 连接上下文信息，包括 fd，读写缓冲区
     /* Hold the regular context, so it can be realloc'ed. */
     redisContext c;
 
+    // 错误信息
     /* Setup error flags so they can be used directly. */
     int err;
     char *errstr;
@@ -73,6 +75,7 @@ typedef struct redisAsyncContext {
     /* Not used by hiredis */
     void *data;
 
+    // （注册/注）（读/写）事件函数说
     /* Event library data and hooks */
     struct {
         void *data;
@@ -86,10 +89,12 @@ typedef struct redisAsyncContext {
         void (*cleanup)(void *privdata);
     } ev;
 
+    // 断开连接回调函数
     /* Called when either the connection is terminated due to an error or per
      * user request. The status is set accordingly (REDIS_OK, REDIS_ERR). */
     redisDisconnectCallback *onDisconnect;
 
+    // 连接成功的回调函数。注意，连接创建成功，套接字变为可写
     /* Called when the first write event was received. */
     redisConnectCallback *onConnect;
 
@@ -97,7 +102,7 @@ typedef struct redisAsyncContext {
     /* Regular command callbacks */
     redisCallbackList replies;
 
-    // 订阅回调函数
+    //  发布订阅回调函数
     /* Subscription callbacks */
     struct {
         redisCallbackList invalid;

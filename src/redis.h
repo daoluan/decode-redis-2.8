@@ -275,7 +275,7 @@
 #define REDIS_SORTKEY_MAX 1024
 
 /* Log levels */
-#define REDIS_DEBUG 0
+#define REDIS_DEBUG 0       // 调试级别，这一级别产生最多的日志信息
 #define REDIS_VERBOSE 1
 #define REDIS_NOTICE 2
 #define REDIS_WARNING 3
@@ -361,6 +361,7 @@
 #define run_with_period(_ms_) if ((_ms_ <= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
     // 小于 1000 个周期或者执行次数小于 (_ms_)/(1000/server.hz)
 
+// 当表达式为假时，记录必要的信息
 /* We can print the stacktrace, so our assert is defined this way: */
 #define redisAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_redisAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),_exit(1)))
 #define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))

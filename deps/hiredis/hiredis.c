@@ -1029,6 +1029,7 @@ redisContext *redisConnectWithTimeout(const char *ip, int port, struct timeval t
 
 redisContext *redisConnectNonBlock(const char *ip, int port) {
     redisContext *c = redisContextInit();
+    // 取消了阻塞选项
     c->flags &= ~REDIS_BLOCK;
     redisContextConnectTcp(c,ip,port,NULL);
     return c;
@@ -1121,9 +1122,11 @@ int redisBufferWrite(redisContext *c, int *done) {
                 return REDIS_ERR;
             }
         } else if (nwritten > 0) {
+            // 如果已经全部写完，置空缓冲区
             if (nwritten == (signed)sdslen(c->obuf)) {
                 sdsfree(c->obuf);
                 c->obuf = sdsempty();
+            // 如果只写完部分，调整缓冲区
             } else {
                 sdsrange(c->obuf,nwritten,-1);
             }
@@ -1147,18 +1150,26 @@ int redisGetReply(redisContext *c, void **reply) {
     int wdone = 0;
     void *aux = NULL;
 
+    // 从调用链来看，read() 函数之前已经被调用，意即可能会收到有数据。
+    // 倘若有数据，redisGetReplyFromReader() 就是将收到的数据按 redis 的通信
+    // 协议解析数据。
+    // 倘若没有数据，会尝试发送数据，并读取数据，再调用
+    // redisGetReplyFromReader()
     /* Try to read pending replies */
     if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
         return REDIS_ERR;
 
+    // 阻塞读写
     /* For the blocking context, flush output buffer and read reply */
     if (aux == NULL && c->flags & REDIS_BLOCK) {
+        // 先写
         /* Write until done */
         do {
             if (redisBufferWrite(c,&wdone) == REDIS_ERR)
                 return REDIS_ERR;
         } while (!wdone);
 
+        // 再读
         /* Read until there is a reply */
         do {
             if (redisBufferRead(c) == REDIS_ERR)

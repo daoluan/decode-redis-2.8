@@ -141,6 +141,7 @@ static void __redisAsyncCopyError(redisAsyncContext *ac) {
     ac->errstr = c->errstr;
 }
 
+// 非阻塞连接
 redisAsyncContext *redisAsyncConnect(const char *ip, int port) {
     redisContext *c = redisConnectNonBlock(ip,port);
     redisAsyncContext *ac = redisAsyncInitialize(c);
@@ -148,6 +149,7 @@ redisAsyncContext *redisAsyncConnect(const char *ip, int port) {
     return ac;
 }
 
+// 非阻塞 unix 域套接字
 redisAsyncContext *redisAsyncConnectUnix(const char *path) {
     redisContext *c = redisConnectUnixNonBlock(path);
     redisAsyncContext *ac = redisAsyncInitialize(c);
@@ -159,6 +161,7 @@ int redisAsyncSetConnectCallback(redisAsyncContext *ac, redisConnectCallback *fn
     if (ac->onConnect == NULL) {
         ac->onConnect = fn;
 
+        // 注册在非阻塞套接字上注册写事件
         /* The common way to detect an established connection is to wait for
          * the first write event to be fired. This assumes the related event
          * library functions are already set. */
@@ -187,6 +190,7 @@ static int __redisPushCallback(redisCallbackList *list, redisCallback *source) {
         cb->next = NULL;
     }
 
+    // 尾插法
     /* Store callback in list */
     if (list->head == NULL)
         list->head = cb;
@@ -232,14 +236,19 @@ static void __redisAsyncFree(redisAsyncContext *ac) {
     dictIterator *it;
     dictEntry *de;
 
+    // 执行所有等待队列中回调函数，将空回复传进去
     /* Execute pending callbacks with NULL reply. */
     while (__redisShiftCallback(&ac->replies,&cb) == REDIS_OK)
         __redisRunCallback(ac,&cb,NULL);
 
+    // 执行所有等待队列中回调函数，将空回复传进去
+    // 这里是无效命令的回调函数
     /* Execute callbacks for invalid commands */
     while (__redisShiftCallback(&ac->sub.invalid,&cb) == REDIS_OK)
         __redisRunCallback(ac,&cb,NULL);
 
+    // 执行所有等待队列中回调函数，将空回复传进去
+    // 这里是订阅发布的回调函数
     /* Run subscription callbacks callbacks with NULL reply */
     it = dictGetIterator(ac->sub.channels);
     while ((de = dictNext(it)) != NULL)
@@ -247,15 +256,19 @@ static void __redisAsyncFree(redisAsyncContext *ac) {
     dictReleaseIterator(it);
     dictRelease(ac->sub.channels);
 
+    // 执行所有等待队列中回调函数，将空回复传进去
+    // 这里是订阅发布的回调函数
     it = dictGetIterator(ac->sub.patterns);
     while ((de = dictNext(it)) != NULL)
         __redisRunCallback(ac,dictGetEntryVal(de),NULL);
     dictReleaseIterator(it);
     dictRelease(ac->sub.patterns);
 
+    // 注销连接上的读写事件
     /* Signal event lib to clean up */
     _EL_CLEANUP(ac);
 
+    // 执行连接关闭回调函数，可做一些清理工作
     /* Execute disconnect callback. When redisAsyncFree() initiated destroying
      * this context, the status will always be REDIS_OK. */
     if (ac->onDisconnect && (c->flags & REDIS_CONNECTED)) {
@@ -266,6 +279,7 @@ static void __redisAsyncFree(redisAsyncContext *ac) {
         }
     }
 
+    // 释放 redisContext 中的内存
     /* Cleanup self */
     redisFree(c);
 }
@@ -369,8 +383,11 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
     int status;
 
     while((status = redisGetReply(c,&reply)) == REDIS_OK) {
+        // 回复内容为空
         if (reply == NULL) {
-            // 没有回复信息，断开连接
+            // REDIS_DISCONNECTING 表示连接断开的时候遇到了错误，如果此时
+            // 写缓冲区为空，会再次尝试断开。之后的回调函数都得不到执行
+            // 的机会
             /* When the connection is being disconnected and there are
              * no more replies, this is the cue to really disconnect. */
             if (c->flags & REDIS_DISCONNECTING && sdslen(c->obuf) == 0) {
@@ -378,7 +395,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
                 return;
             }
 
-            // 监视模式下。。。。
+            // 监视模式下
             /* If monitor mode, repush callback */
             if(c->flags & REDIS_MONITORING) {
                 __redisPushCallback(&ac->replies,&cb);
@@ -391,7 +408,7 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
 
         /* Even if the context is subscribed, pending regular callbacks will
          * get a reply before pub/sub messages arrive. */
-        // 获取 redisCallback
+        // 获取回调函数 redisCallback
         if (__redisShiftCallback(&ac->replies,&cb) != REDIS_OK) {
             /*
              * A spontaneous reply in a not-subscribed context can be the error
@@ -425,11 +442,17 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
             __redisRunCallback(ac,&cb,reply);
             c->reader->fn->freeObject(reply);
 
+            // 可能是之前遇到了不可修复的错误，被标记了 REDIS_FREEING。
+            // 倘若是在 callback 里面遇到的错误，redis 不能立即释放连接，
+            // 因为可能需要返回一些数据给客户端。因此 redis 选择在 callback
+            // 执行过后，才释放（关闭）连接。这个方法好酷。
             /* Proceed with free'ing when redisAsyncFree() was called. */
             if (c->flags & REDIS_FREEING) {
                 __redisAsyncFree(ac);
                 return;
             }
+
+        // 没有设置回调函数，直接释放收到的数据
         } else {
             /* No callback for this reply. This can either be a NULL callback,
              * or there were no callbacks to begin with. Either way, don't
@@ -451,7 +474,10 @@ void redisProcessCallbacks(redisAsyncContext *ac) {
 static int __redisAsyncHandleConnect(redisAsyncContext *ac) {
     redisContext *c = &(ac->c);
 
-    // 检测 socket 错误，尝试连接
+    // 当一个套接口出错时，它会被 select 调用标记为既可读又可写。
+    // 因此，我们要用 getsockopt() 判断是否连接真的创建成功了
+
+    // 检测 socket 错误
     if (redisCheckSocketError(c,c->fd) == REDIS_ERR) {
         /* Try again later when connect(2) is still in progress. */
         if (errno == EINPROGRESS)
@@ -462,7 +488,7 @@ static int __redisAsyncHandleConnect(redisAsyncContext *ac) {
         return REDIS_ERR;
     }
 
-    // 尝试连接成功
+    // 连接是成功的
     /* Mark context as connected. */
     c->flags |= REDIS_CONNECTED;
     if (ac->onConnect) ac->onConnect(ac,REDIS_OK);
@@ -490,8 +516,11 @@ void redisAsyncHandleRead(redisAsyncContext *ac) {
         // 读取错误，断开连接并做一些清理工作
         __redisAsyncDisconnect(ac);
     } else {
+        // 读取数据成功，再次注册读事件，
         /* Always re-schedule reads */
         _EL_ADD_READ(ac);
+
+        // 并处理回调函数
         redisProcessCallbacks(ac);
     }
 }
@@ -500,10 +529,13 @@ void redisAsyncHandleWrite(redisAsyncContext *ac) {
     redisContext *c = &(ac->c);
     int done = 0;
 
+    // 连接创建失败？？？
     if (!(c->flags & REDIS_CONNECTED)) {
         /* Abort connect was not successful. */
         if (__redisAsyncHandleConnect(ac) != REDIS_OK)
             return;
+
+        // 再尝试检测 flag
         /* Try again later when the context is still not connected. */
         if (!(c->flags & REDIS_CONNECTED))
             return;
@@ -513,8 +545,10 @@ void redisAsyncHandleWrite(redisAsyncContext *ac) {
         __redisAsyncDisconnect(ac);
     } else {
         /* Continue writing when not done, stop writing otherwise */
+        // 当缓冲区中还有数据待发送时，会再次注册写事件
         if (!done)
             _EL_ADD_WRITE(ac);
+        // 当缓冲区中没有数据待发送时，会再次注册写事件
         else
             _EL_DEL_WRITE(ac);
 
@@ -555,7 +589,7 @@ static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void 
     /* Don't accept new commands when the connection is about to be closed. */
     if (c->flags & (REDIS_DISCONNECTING | REDIS_FREEING)) return REDIS_ERR;
 
-    // 设置回调函数
+    // 设置回调函数。在收到数据后会回调此函数
     /* Setup callback */
     cb.fn = fn;
     cb.privdata = privdata;
@@ -569,6 +603,7 @@ static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void 
     cstr += pvariant;
     clen -= pvariant;
 
+    // 订阅发布命令的情况
     if (hasnext && strncasecmp(cstr,"subscribe\r\n",11) == 0) {
         c->flags |= REDIS_SUBSCRIBED;
 
@@ -580,6 +615,7 @@ static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void 
             else
                 dictReplace(ac->sub.channels,sname,&cb);
         }
+    // 取消订阅发布命令的情况，无回调处理
     } else if (strncasecmp(cstr,"unsubscribe\r\n",13) == 0) {
         /* It is only useful to call (P)UNSUBSCRIBE when the context is
          * subscribed to one or more channels or patterns. */
@@ -588,10 +624,12 @@ static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void 
         /* (P)UNSUBSCRIBE does not have its own response: every channel or
          * pattern that is unsubscribed will receive a message. This means we
          * should not append a callback function for this command. */
+     // 监视命令的情况
      } else if(strncasecmp(cstr,"monitor\r\n",9) == 0) {
          /* Set monitor flag and push callback */
          c->flags |= REDIS_MONITORING;
          __redisPushCallback(&ac->replies,&cb);
+    // 其他情况
     } else {
         if (c->flags & REDIS_SUBSCRIBED)
             /* This will likely result in an error reply, but it needs to be
@@ -601,8 +639,10 @@ static int __redisAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void 
             __redisPushCallback(&ac->replies,&cb);
     }
 
+    // 将命令追加到缓冲区
     __redisAppendCommand(c,cmd,len);
 
+    // 注册写事件
     /* Always schedule a write when the write buffer is non-empty */
     _EL_ADD_WRITE(ac);
 
@@ -614,7 +654,8 @@ int redisvAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void *privdat
     int len;
     int status;
 
-    // 将命令格式化,准备提交执行
+    // redis 客户端和服务器有通信协议。
+    // 此处将命令按通信协议格式化
     len = redisvFormatCommand(&cmd,format,ap);
 
     status = __redisAsyncCommand(ac,fn,privdata,cmd,len);

@@ -113,6 +113,7 @@ static int redisSetBlocking(redisContext *c, int fd, int blocking) {
     return REDIS_OK;
 }
 
+// 关闭 Nagle 算法
 static int redisSetTcpNoDelay(redisContext *c, int fd) {
     int yes = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1) {
@@ -182,6 +183,7 @@ int redisCheckSocketError(redisContext *c, int fd) {
         return REDIS_ERR;
     }
 
+    // getsockopt 返回有错误，连接创建不成功
     if (err) {
         errno = err;
         __redisSetErrorFromErrno(c,REDIS_ERR_IO,NULL);
@@ -189,6 +191,7 @@ int redisCheckSocketError(redisContext *c, int fd) {
         return REDIS_ERR;
     }
 
+    // 连接创建成功
     return REDIS_OK;
 }
 
@@ -228,24 +231,37 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port, struct t
         }
     }
     for (p = servinfo; p != NULL; p = p->ai_next) {
+        // 创建套接字
         if ((s = socket(p->ai_family,p->ai_socktype,p->ai_protocol)) == -1)
             continue;
 
+        // 设置为非阻塞
         if (redisSetBlocking(c,s,0) != REDIS_OK)
             goto error;
+
+        // 以非阻塞的方式建立连接
         if (connect(s,p->ai_addr,p->ai_addrlen) == -1) {
+            // 连接建立出错
             if (errno == EHOSTUNREACH) {
                 close(s);
                 continue;
+
+            // 连接建立操作已经发起
             } else if (errno == EINPROGRESS && !blocking) {
                 /* This is ok. */
+
+            // 其他情况会等待 timeout
             } else {
                 if (redisContextWaitReady(c,s,timeout) != REDIS_OK)
                     goto error;
             }
         }
+
+        // 如果设置了阻塞选项，则将套接字设置为阻塞
         if (blocking && redisSetBlocking(c,s,1) != REDIS_OK)
             goto error;
+
+        // 关闭 Nagle 算法
         if (redisSetTcpNoDelay(c,s) != REDIS_OK)
             goto error;
 

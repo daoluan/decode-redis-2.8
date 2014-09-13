@@ -332,6 +332,8 @@ static int redisAeAttach(aeEventLoop *loop, redisAsyncContext *ac) {
     e->reading = e->writing = 0;
 
     // 填充 redisAsyncContext
+    // 注册读/写事件函数
+    // 注销读/写事件函数
     /* Register functions to start/stop listening for events */
     ac->ev.addRead = redisAeAddRead;
     ac->ev.delRead = redisAeDelRead;
@@ -1742,12 +1744,23 @@ void sentinelReconnectInstance(sentinelRedisInstance *ri) {
         } else {
             // 设置连接时间
             ri->cc_conn_time = mstime();
+
+            // redisAsyncConnect.data 指向 sentinelRedisInstance，方便在回调
+            // 函数中获取 sentinelRedisInstance
             ri->cc->data = ri;
+
+            // 绑定到 redis 事件中心
             redisAeAttach(server.el,ri->cc);
+
+            // 注册写事件，并设置连接成功回调函数（即写事件回调函数）
             redisAsyncSetConnectCallback(ri->cc,
                                             sentinelLinkEstablishedCallback);
+
+            // 断开连接回调函数
             redisAsyncSetDisconnectCallback(ri->cc,
                                             sentinelDisconnectCallback);
+
+            // 认证
             sentinelSendAuthIfNeeded(ri,ri->cc);
         }
     }
@@ -1770,17 +1783,17 @@ void sentinelReconnectInstance(sentinelRedisInstance *ri) {
 
             // 绑定到 redis 事件中心
             redisAeAttach(server.el,ri->pc);
-            // 连接回调函数
+
+            // 注册写事件，并设置连接成功回调函数（即写事件回调函数）
             redisAsyncSetConnectCallback(ri->pc,
                                             sentinelLinkEstablishedCallback);
             // 断开连接回调函数
             redisAsyncSetDisconnectCallback(ri->pc,
                                             sentinelDisconnectCallback);
-            // 验证
+            // 认证
             sentinelSendAuthIfNeeded(ri,ri->pc);
 
             // 订阅了 ri 上的 __sentinel__:hello 频道
-            //
             /* Now we subscribe to the Sentinels "Hello" channel. */
             retval = redisAsyncCommand(ri->pc,
                 sentinelReceiveHelloMessages, NULL, "SUBSCRIBE %s",

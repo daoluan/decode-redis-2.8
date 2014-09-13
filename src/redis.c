@@ -264,6 +264,7 @@ struct redisCommand redisCommandTable[] = {
 
 /*============================ Utility functions ============================ */
 
+// redisLogRaw() 函数将给定的信息，在增加时间戳和进程 id 后写入日志文件
 /* Low level logging. To use only for very big messages, otherwise
  * redisLog() is to prefer. */
 void redisLogRaw(int level, const char *msg) {
@@ -271,32 +272,41 @@ void redisLogRaw(int level, const char *msg) {
     const char *c = ".-*#";
     FILE *fp;
     char buf[64];
-    int rawmode = (level & REDIS_LOG_RAW);
+    int rawmode = (level & REDIS_LOG_RAW); // raw mode 表示不需要时间戳
     int log_to_stdout = server.logfile[0] == '\0';
 
+    // 日志级别判断
     level &= 0xff; /* clear flags */
     if (level < server.verbosity) return;
 
+    // 打开日志文件
     fp = log_to_stdout ? stdout : fopen(server.logfile,"a");
     if (!fp) return;
 
-    if (rawmode) {
+    if (rawmode) { // raw mode 表示不需要时间戳
         fprintf(fp,"%s",msg);
     } else {
         int off;
         struct timeval tv;
 
+        // 增加时间戳
         gettimeofday(&tv,NULL);
         off = strftime(buf,sizeof(buf),"%d %b %H:%M:%S.",localtime(&tv.tv_sec));
         snprintf(buf+off,sizeof(buf)-off,"%03d",(int)tv.tv_usec/1000);
+
+        // 增加进程 id，写入日志文件
         fprintf(fp,"[%d] %s %c %s\n",(int)getpid(),buf,c[level],msg);
     }
+    // 清楚缓冲区，强制物理写入
     fflush(fp);
 
     if (!log_to_stdout) fclose(fp);
+
+    // 如果启用了系统日志，写入系统日志
     if (server.syslog_enabled) syslog(syslogLevelMap[level], "%s", msg);
 }
 
+// redis 日志函数，会将给定的数据写入日志文件，和常用的 printf 函数用法差不多
 /* Like redisLogRaw() but with printf-alike support. This is the function that
  * is used across the code. The raw version is only used in order to dump
  * the INFO output on crash. */
@@ -304,15 +314,25 @@ void redisLog(int level, const char *fmt, ...) {
     va_list ap;
     char msg[REDIS_MAX_LOGMSG_LEN];
 
+    // 如果日志级别小于预设的日志级别，直接返回
+    // redis 日志界别，下面来自 redis.h
+    // #define REDIS_DEBUG 0
+    // #define REDIS_VERBOSE 1
+    // #define REDIS_NOTICE 2
+    // #define REDIS_WARNING 3
+    // #define REDIS_LOG_RAW (1<<10) /* Modifier to log without timestamp */
+    // #define REDIS_DEFAULT_VERBOSITY REDIS_NOTICE
     if ((level&0xff) < server.verbosity) return;
 
     va_start(ap, fmt);
     vsnprintf(msg, sizeof(msg), fmt, ap);
     va_end(ap);
 
+    // 将日志写入文件
     redisLogRaw(level,msg);
 }
 
+// 信号处理函数专用，会记录写入进程 id 和收到信号的时间
 /* Log a fixed message without printf-alike capabilities, in a way that is
  * safe to call from a signal handler.
  *
@@ -324,16 +344,21 @@ void redisLogFromHandler(int level, const char *msg) {
     int log_to_stdout = server.logfile[0] == '\0';
     char buf[64];
 
+    // 日志界别，                            守护进程且日志被写到标准输出
+                                                // 就没有必要写日志了
+                                                // 因为守护进程是关闭标准输出的
     if ((level&0xff) < server.verbosity || (log_to_stdout && server.daemonize))
         return;
+
+    // 打开日志文件
     fd = log_to_stdout ? STDOUT_FILENO :
                          open(server.logfile, O_APPEND|O_CREAT|O_WRONLY, 0644);
     if (fd == -1) return;
-    ll2string(buf,sizeof(buf),getpid());
+    ll2string(buf,sizeof(buf),getpid()); // 进程 id
     if (write(fd,"[",1) == -1) goto err;
     if (write(fd,buf,strlen(buf)) == -1) goto err;
     if (write(fd," | signal handler] (",20) == -1) goto err;
-    ll2string(buf,sizeof(buf),time(NULL));
+    ll2string(buf,sizeof(buf),time(NULL)); // 时间
     if (write(fd,buf,strlen(buf)) == -1) goto err;
     if (write(fd,") ",2) == -1) goto err;
     if (write(fd,msg,strlen(msg)) == -1) goto err;
@@ -342,6 +367,7 @@ err:
     if (!log_to_stdout) close(fd);
 }
 
+// 获取微秒
 /* Return the UNIX time in microseconds */
 long long ustime(void) {
     struct timeval tv;
@@ -353,6 +379,7 @@ long long ustime(void) {
     return ust;
 }
 
+// 获取毫秒
 /* Return the UNIX time in milliseconds */
 long long mstime(void) {
     return ustime()/1000;

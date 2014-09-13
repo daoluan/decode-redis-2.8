@@ -246,6 +246,7 @@ void computeDatasetDigest(unsigned char *final) {
     }
 }
 
+// 某些 redis功能的测试用例
 void debugCommand(redisClient *c) {
     if (!strcasecmp(c->argv[1]->ptr,"segfault")) {
         *((char*)-1) = 'x';
@@ -372,15 +373,23 @@ void debugCommand(redisClient *c) {
 /* =========================== Crash handling  ============================== */
 
 void _redisAssert(char *estr, char *file, int line) {
+    // 向日志文件中写入 BUG头部
     bugReportStart();
+
+    // 将文件名，行号，错误信息写入日志
     redisLog(REDIS_WARNING,"=== ASSERTION FAILED ===");
     redisLog(REDIS_WARNING,"==> %s:%d '%s' is not true",file,line,estr);
+
+// 如果需要，可以记录错误信息，文件名和行号，以便在进程崩溃后调试（gdb core？）
 #ifdef HAVE_BACKTRACE
     server.assert_failed = estr;
     server.assert_file = file;
     server.assert_line = line;
     redisLog(REDIS_WARNING,"(forcing SIGSEGV to print the bug report.)");
 #endif
+
+    // 强制 segmentation fault。无效的内存访问，可以产生 SIGSEGV，如此会
+    // 产生 coredump 文件以供进程崩溃后调试使用
     *((char*)-1) = 'x';
 }
 
@@ -434,18 +443,24 @@ void redisLogObjectDebugInfo(robj *o) {
     }
 }
 
+// 记录 redis 对象
 void _redisAssertPrintObject(robj *o) {
     bugReportStart();
     redisLog(REDIS_WARNING,"=== ASSERTION FAILED OBJECT CONTEXT ===");
     redisLogObjectDebugInfo(o);
 }
 
+// 遇到了不可挽救的错误，redis 会调用此函数强制终止 redis
+// 此函数会写入 redis 客户端的信息和相关 redis 对象的信息
 void _redisAssertWithInfo(redisClient *c, robj *o, char *estr, char *file, int line) {
+    // 打印客户端信息
     if (c) _redisAssertPrintClientInfo(c);
+    // 打印对象信息
     if (o) _redisAssertPrintObject(o);
     _redisAssert(estr,file,line);
 }
 
+// 遇到了不可挽救的错误，redis 会调用此函数强制终止 redis
 void _redisPanic(char *msg, char *file, int line) {
     bugReportStart();
     redisLog(REDIS_WARNING,"------------------------------------------------");
@@ -455,9 +470,13 @@ void _redisPanic(char *msg, char *file, int line) {
     redisLog(REDIS_WARNING,"(forcing SIGSEGV in order to print the stack trace)");
 #endif
     redisLog(REDIS_WARNING,"------------------------------------------------");
+
+    // 强制 segmentation fault。无效的内存访问，可以产生 SIGSEGV，如此会
+    // 产生 coredump 文件以供进程崩溃后调试使用
     *((char*)-1) = 'x';
 }
 
+// 向日志文件中写入 BUG 头部
 void bugReportStart(void) {
     if (server.bug_report_start == 0) {
         redisLog(REDIS_WARNING,
@@ -498,6 +517,7 @@ static void *getMcontextEip(ucontext_t *uc) {
 #endif
 }
 
+// 记录堆栈的信息
 void logStackContent(void **sp) {
     int i;
     for (i = 15; i >= 0; i--) {
@@ -511,6 +531,7 @@ void logStackContent(void **sp) {
     }
 }
 
+// 记录寄存器
 void logRegisters(ucontext_t *uc) {
     redisLog(REDIS_WARNING, "--- REGISTERS");
 
@@ -647,12 +668,14 @@ void logStackTrace(ucontext_t *uc) {
     int trace_size = 0, fd;
     int log_to_stdout = server.logfile[0] == '\0';
 
+    // 以追加的方式打开日志文件
     /* Open the log file in append mode. */
     fd = log_to_stdout ?
         STDOUT_FILENO :
         open(server.logfile, O_APPEND|O_CREAT|O_WRONLY, 0644);
     if (fd == -1) return;
 
+    // backtrace() 是系统提供的函数，可以获取堆栈中每个调用栈的返回地址
     /* Generate the stack trace */
     trace_size = backtrace(trace, 100);
 
@@ -660,13 +683,19 @@ void logStackTrace(ucontext_t *uc) {
     if (getMcontextEip(uc) != NULL)
         trace[1] = getMcontextEip(uc);
 
+    // backtrace_symbols_fd() 是系统提供的函数
+    // 将每个调用栈的信息转化为字符串，调用栈的信息包括，函数名，函数的偏移
+    // 地址和返回地址
     /* Write symbols to log file */
     backtrace_symbols_fd(trace, trace_size, fd);
 
+    // 关闭日志文件
     /* Cleanup */
     if (!log_to_stdout) close(fd);
 }
 
+// 因为 redis 是单进程单线程的，server.current_client 会记录当前服务的客户端，
+// logCurrentClient() 是记录当前服务客户端的信息
 /* Log information about the "current" client, that is, the client that is
  * currently being served by Redis. May be NULL if Redis is not serving a
  * client right now. */
@@ -677,10 +706,13 @@ void logCurrentClient(void) {
     sds client;
     int j;
 
+    // 记录客户端信息
     redisLog(REDIS_WARNING, "--- CURRENT CLIENT INFO");
     client = getClientInfoString(cc);
     redisLog(REDIS_WARNING,"client: %s", client);
     sdsfree(client);
+
+    // 记录客户端提交的参数
     for (j = 0; j < cc->argc; j++) {
         robj *decoded;
 
@@ -688,6 +720,10 @@ void logCurrentClient(void) {
         redisLog(REDIS_WARNING,"argv[%d]: '%s'", j, (char*)decoded->ptr);
         decrRefCount(decoded);
     }
+
+    // 如果客户端提交了命令，那么检测它的第一个参数，一般 redis 客户端提交
+    // 的命令第一个参数是一个 key。下面会检索是否内存数据库中是否存在此 key，
+    // 有则记录
     /* Check if the first argument, usually a key, is found inside the
      * selected DB, and if so print info about the associated object. */
     if (cc->argc >= 1) {
