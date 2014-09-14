@@ -207,6 +207,7 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
     redisClient *c = server.lua_client;
     sds reply;
 
+    // 参数必须大于零
     /* Require at least one argument */
     if (argc == 0) {
         luaPushError(lua,
@@ -214,6 +215,7 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
         return 1;
     }
 
+    // 处理参数
     /* Build the arguments vector */
     argv = zmalloc(sizeof(robj*)*argc);
     for (j = 0; j < argc; j++) {
@@ -221,7 +223,7 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
         argv[j] = createStringObject((char*)lua_tostring(lua,j+1),
                                      lua_strlen(lua,j+1));
     }
-    
+
     /* Check if one of the arguments passed by the Lua script
      * is not a string or an integer (lua_isstring() return true for
      * integers as well). */
@@ -237,10 +239,12 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
         return 1;
     }
 
+    // 将参数设置为虚拟客户端的参数
     /* Setup our fake client for command execution */
     c->argv = argv;
     c->argc = argc;
 
+    // 查找命令
     /* Command lookup */
     cmd = lookupCommand(argv[0]->ptr);
     if (!cmd || ((cmd->arity > 0 && cmd->arity != argc) ||
@@ -263,17 +267,30 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
     /* Write commands are forbidden against read-only slaves, or if a
      * command marked as non-deterministic was already called in the context
      * of this script. */
+    // 涉及写操作的命令
     if (cmd->flags & REDIS_CMD_WRITE) {
+        // 如果曾经 lua 脚本中执行未决命令，譬如 RANDOMKEY，那么写操作是不
+        // 允许的
         if (server.lua_random_dirty) {
             luaPushError(lua,
                 "Write commands not allowed after non deterministic commands");
             goto cleanup;
+
+        // 此服务器为设定了只读的从机，且未处于加载数据阶段，那么写操作是不
+        // 允许的
         } else if (server.masterhost && server.repl_slave_ro &&
                    !server.loading &&
                    !(server.lua_caller->flags & REDIS_MASTER))
         {
             luaPushError(lua, shared.roslaveerr->ptr);
             goto cleanup;
+
+        // 如果设定了当 BGSAVE 失败时不能执行写操作，而且 BGSAVE 失败了，
+        // 那么写操作是不允许的
+        // server.stop_writes_on_bgsave_err 选项是说默认当 BGSAVE 持久化
+        // 失败的时候，禁止接受写操作。当客户端发现写操作失败的时候，可以及时
+        // 发现 redis 服务器持久化失败了，因此，这是给客户端发现持久化失败的
+        // 机会
         } else if (server.stop_writes_on_bgsave_err &&
                    server.saveparamslen > 0 &&
                    server.lastbgsave_status == REDIS_ERR)
@@ -283,6 +300,7 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
         }
     }
 
+    // 内存超出预设值，执行淘汰策略
     /* If we reached the memory limit configured via maxmemory, commands that
      * could enlarge the memory usage are not allowed, but only if this is the
      * first write in the context of this script, otherwise we can't stop
@@ -296,9 +314,14 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
         }
     }
 
+    // 标记涉及随机和写操作
     if (cmd->flags & REDIS_CMD_RANDOM) server.lua_random_dirty = 1;
     if (cmd->flags & REDIS_CMD_WRITE) server.lua_write_dirty = 1;
 
+    // 执行命令
+    // c 实际上是一个虚拟的客户端，虚拟客户端即是为了复用普通命令处理函数
+    // 以 get 命令的处理函数为例：
+    // void getCommand(redisClient *c);
     /* Run the command */
     c->cmd = cmd;
     call(c,REDIS_CALL_SLOWLOG | REDIS_CALL_STATS);
@@ -306,11 +329,13 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
     /* Convert the result of the Redis command into a suitable Lua type.
      * The first thing we need is to create a single string from the client
      * output buffers. */
+    // 拷贝 redisClient 的处理结果
     reply = sdsempty();
     if (c->bufpos) {
         reply = sdscatlen(reply,c->buf,c->bufpos);
         c->bufpos = 0;
     }
+    // 删除 redisClient 内的处理结果
     while(listLength(c->reply)) {
         robj *o = listNodeValue(listFirst(c->reply));
 
@@ -436,15 +461,19 @@ int luaLogCommand(lua_State *lua) {
     return 0;
 }
 
+// 判断超时，并作超时的处理
 void luaMaskCountHook(lua_State *lua, lua_Debug *ar) {
     long long elapsed;
     REDIS_NOTUSED(ar);
     REDIS_NOTUSED(lua);
 
+    // 计算已经超时的时间
     elapsed = (ustime()/1000) - server.lua_time_start;
     if (elapsed >= server.lua_time_limit && server.lua_timedout == 0) {
         redisLog(REDIS_WARNING,"Lua slow script detected: still in execution after %lld milliseconds. You can try killing the script using the SCRIPT KILL command.",elapsed);
         server.lua_timedout = 1;
+
+        // 超时了，关闭监听发送 lua 脚本命令的客户端
         /* Once the script timeouts we reenter the event loop to permit others
          * to call SCRIPT KILL or SHUTDOWN NOSAVE if needed. For this reason
          * we need to mask the client executing the script from the event loop.
@@ -452,8 +481,13 @@ void luaMaskCountHook(lua_State *lua, lua_Debug *ar) {
          * here when the EVAL command will return. */
          aeDeleteFileEvent(server.el, server.lua_caller->fd, AE_READABLE);
     }
+
+    // lua 脚本执行超时，redis 会检测对否有其他客户端会发送 SCRIPT KILL 命令
+    // 尝试终结这个脚本的执行
     if (server.lua_timedout)
         aeProcessEvents(server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
+
+    // 如果 lua 脚本被停止了，强制产生错误，结束 lua
     if (server.lua_kill) {
         redisLog(REDIS_WARNING,"Lua script killed by user with SCRIPT KILL.");
         lua_pushstring(lua,"Script killed by user with SCRIPT KILL...");
@@ -476,7 +510,7 @@ void luaLoadLibraries(lua_State *lua) {
     luaLoadLib(lua, LUA_TABLIBNAME, luaopen_table);
     luaLoadLib(lua, LUA_STRLIBNAME, luaopen_string);
     luaLoadLib(lua, LUA_MATHLIBNAME, luaopen_math);
-    luaLoadLib(lua, LUA_DBLIBNAME, luaopen_debug); 
+    luaLoadLib(lua, LUA_DBLIBNAME, luaopen_debug);
     luaLoadLib(lua, "cjson", luaopen_cjson);
     luaLoadLib(lua, "struct", luaopen_struct);
     luaLoadLib(lua, "cmsgpack", luaopen_cmsgpack);
@@ -538,27 +572,33 @@ void scriptingEnableGlobalsProtection(lua_State *lua) {
 void scriptingInit(void) {
     lua_State *lua = lua_open();
 
+    // 加载常用的 lua 库
     luaLoadLibraries(lua);
     luaRemoveUnsupportedFunctions(lua);
 
+    // SHAs -> lus_scrpit 哈希表
     /* Initialize a dictionary we use to map SHAs to scripts.
      * This is useful for replication, as we need to replicate EVALSHA
      * as EVAL, so we need to remember the associated script. */
     server.lua_scripts = dictCreate(&shaScriptObjectDictType,NULL);
 
+    // 向 lua 解释器注册 redis 的数据或者变量
     /* Register the redis commands table and fields */
     lua_newtable(lua);
 
+    // 注册 redis.call 函数，命令处理函数
     /* redis.call */
     lua_pushstring(lua,"call");
     lua_pushcfunction(lua,luaRedisCallCommand);
     lua_settable(lua,-3);
 
+    // 注册 redis.pall 函数，命令处理函数
     /* redis.pcall */
     lua_pushstring(lua,"pcall");
     lua_pushcfunction(lua,luaRedisPCallCommand);
     lua_settable(lua,-3);
 
+    // 注册 redis.log 函数和 redis 日志级别
     /* redis.log and log levels. */
     lua_pushstring(lua,"log");
     lua_pushcfunction(lua,luaLogCommand);
@@ -580,11 +620,13 @@ void scriptingInit(void) {
     lua_pushnumber(lua,REDIS_WARNING);
     lua_settable(lua,-3);
 
+    // 注册 redis.sha1hex 函数
     /* redis.sha1hex */
     lua_pushstring(lua, "sha1hex");
     lua_pushcfunction(lua, luaRedisSha1hexCommand);
     lua_settable(lua, -3);
 
+    // 注册 redis 错误处理函数
     /* redis.error_reply and redis.status_reply */
     lua_pushstring(lua, "error_reply");
     lua_pushcfunction(lua, luaRedisErrorReplyCommand);
@@ -593,9 +635,11 @@ void scriptingInit(void) {
     lua_pushcfunction(lua, luaRedisStatusReplyCommand);
     lua_settable(lua, -3);
 
+    // 将上面注册的内容作为 redis 的变量，在 lua 中变为可访问
     /* Finally set the table as 'redis' global var. */
     lua_setglobal(lua,"redis");
 
+    // 将 lua 原有 math.random 函数替换为 redis 自己的实现
     /* Replace math.random and math.randomseed with our implementations. */
     lua_getglobal(lua,"math");
 
@@ -609,6 +653,7 @@ void scriptingInit(void) {
 
     lua_setglobal(lua,"math");
 
+    // 以下是辅助函数
     /* Add a helper function that we use to sort the multi bulk output of non
      * deterministic commands, when containing 'false' elements. */
     {
@@ -641,6 +686,7 @@ void scriptingInit(void) {
         lua_pcall(lua,0,0,0);
     }
 
+    // 创建虚拟客户端，以便在 lua 内部执行 redis 命令
     /* Create the (non connected) client that we use to execute Redis commands
      * inside the Lua interpreter.
      * Note: there is no need to create it again when this function is called
@@ -770,6 +816,7 @@ void luaSetGlobalArray(lua_State *lua, char *var, robj **elev, int elec) {
     lua_setglobal(lua,var);
 }
 
+// 创建 lua 函数
 /* Define a lua function with the specified function name and body.
  * The function name musts be a 2 characters long string, since all the
  * functions we defined in the Lua context are in the form:
@@ -788,21 +835,27 @@ int luaCreateFunction(redisClient *c, lua_State *lua, char *funcname, robj *body
     funcdef = sdscatlen(funcdef,body->ptr,sdslen(body->ptr));
     funcdef = sdscatlen(funcdef," end",4);
 
+    // 加载并解析 lua 函数 funcdef
+    // luaL_loadbuffer() 会编译给定 lua 脚本；如果编译没有问题，会将其入栈
     if (luaL_loadbuffer(lua,funcdef,sdslen(funcdef),"@user_script")) {
         addReplyErrorFormat(c,"Error compiling script (new function): %s\n",
             lua_tostring(lua,-1));
-        lua_pop(lua,1);
+            // lua_tostring() 返回错误信息
+        lua_pop(lua,1); // 将 error msg 出栈
         sdsfree(funcdef);
         return REDIS_ERR;
     }
     sdsfree(funcdef);
+
+    // 尝试调用
     if (lua_pcall(lua,0,0,0)) {
         addReplyErrorFormat(c,"Error running script (new function): %s\n",
             lua_tostring(lua,-1));
-        lua_pop(lua,1);
+        lua_pop(lua,1); // 将 error msg 出栈
         return REDIS_ERR;
     }
 
+    // 添加到 SHA1 -> lua_scripts 哈希表
     /* We also save a SHA1 -> Original script map in a dictionary
      * so that we can replicate / write in the AOF all the
      * EVALSHA commands as EVAL using the original script. */
@@ -821,6 +874,7 @@ void evalGenericCommand(redisClient *c, int evalsha) {
     long long numkeys;
     int delhook = 0, err;
 
+    // 随机数的种子，在产生哈希值的时候会用到
     /* We want the same PRNG sequence at every call so that our PRNG is
      * not affected by external state. */
     redisSrand48(0);
@@ -836,6 +890,7 @@ void evalGenericCommand(redisClient *c, int evalsha) {
     server.lua_random_dirty = 0;
     server.lua_write_dirty = 0;
 
+    // 检查参数的有效性
     /* Get the number of arguments that are keys */
     if (getLongLongFromObjectOrReply(c,c->argv[2],&numkeys,NULL) != REDIS_OK)
         return;
@@ -844,14 +899,21 @@ void evalGenericCommand(redisClient *c, int evalsha) {
         return;
     }
 
+    // 函数名以 f_ 开头
     /* We obtain the script SHA1, then check if this function is already
      * defined into the Lua state */
     funcname[0] = 'f';
     funcname[1] = '_';
+
+    // 如果没有哈希值，需要计算 lua 脚本的哈希值
     if (!evalsha) {
+        // 计算哈希值，会放入到 SHA1 -> lua_script 哈希表中
+        // c->argv[1]->ptr 是用户指定的 lua 脚本
+        // sha1hex() 产生的哈希值存在 funcname 中
         /* Hash the code if this is an EVAL call */
         sha1hex(funcname+2,c->argv[1]->ptr,sdslen(c->argv[1]->ptr));
     } else {
+        // 用户自己指定了哈希值
         /* We already have the SHA if it is a EVALSHA */
         int j;
         char *sha = c->argv[1]->ptr;
@@ -861,13 +923,20 @@ void evalGenericCommand(redisClient *c, int evalsha) {
         funcname[42] = '\0';
     }
 
+    // 将错误处理函数入栈
+    // lua_getglobal() 会将读取指定的全局变量，且将其入栈
     /* Push the pcall error handler function on the stack. */
     lua_getglobal(lua, "__redis__err__handler");
 
     /* Try to lookup the Lua function */
+    // 在 lua 中查找是否注册了此函数。这一句尝试将 funcname 入栈
     lua_getglobal(lua, funcname);
-    if (lua_isnil(lua,-1)) {
+    if (lua_isnil(lua,-1)) { // funcname 在 lua 中不存在
+
+        // 将 nil 出栈
         lua_pop(lua,1); /* remove the nil from the stack */
+
+        // 已经确定 funcname 在 lua 中没有定义，需要创建
         /* Function not defined... let's define it if we have the
          * body of the function. If this is an EVALSHA call we can just
          * return an error. */
@@ -876,25 +945,34 @@ void evalGenericCommand(redisClient *c, int evalsha) {
             addReply(c, shared.noscripterr);
             return;
         }
+
+        // 创建 lua 函数 funcname
+        // c->argv[1] 指向用户指定的 lua 脚本
         if (luaCreateFunction(c,lua,funcname,c->argv[1]) == REDIS_ERR) {
             lua_pop(lua,1); /* remove the error handler from the stack. */
             /* The error is sent to the client by luaCreateFunction()
              * itself when it returns REDIS_ERR. */
             return;
         }
+
+        // 现在 lua 中已经有 funcname 这个全局变量了，将其读取并入栈，
+        // 准备调用
         /* Now the following is guaranteed to return non nil */
         lua_getglobal(lua, funcname);
         redisAssert(!lua_isnil(lua,-1));
     }
 
+    // 设置参数，包括键和值
     /* Populate the argv and keys table accordingly to the arguments that
      * EVAL received. */
     luaSetGlobalArray(lua,"KEYS",c->argv+3,numkeys);
     luaSetGlobalArray(lua,"ARGV",c->argv+3+numkeys,c->argc-3-numkeys);
 
+    // 选择数据集，lua_client 有专用的数据集
     /* Select the right DB in the context of the Lua client */
     selectDb(server.lua_client,c->db->id);
-    
+
+    // 设置超时回调函数，以在 lua 脚本执行过长时间的时候停止脚本的运行
     /* Set a hook in order to be able to stop the script execution if it
      * is running for too much time.
      * We set the hook only if the time limit is enabled as the hook will
@@ -903,17 +981,23 @@ void evalGenericCommand(redisClient *c, int evalsha) {
     server.lua_time_start = ustime()/1000;
     server.lua_kill = 0;
     if (server.lua_time_limit > 0 && server.masterhost == NULL) {
+        // 当 lua 解释器执行了 100000，luaMaskCountHook() 会被调用
         lua_sethook(lua,luaMaskCountHook,LUA_MASKCOUNT,100000);
         delhook = 1;
     }
 
+    // 现在，我们确定函数已经注册成功了.可以直接调用 lua 脚本
     /* At this point whether this script was never seen before or if it was
      * already defined, we can call it. We have zero arguments and expect
      * a single return value. */
     err = lua_pcall(lua,0,1,-2);
 
+    // 删除超时回调函数
     /* Perform some cleanup that we need to do both on error and success. */
     if (delhook) lua_sethook(lua,luaMaskCountHook,0,0); /* Disable hook */
+
+    // 如果已经超时了，说明 lua 脚本已在超时后背 SCRPIT KILL 终结了
+    // 恢复监听发送 lua 脚本命令的客户端
     if (server.lua_timedout) {
         server.lua_timedout = 0;
         /* Restore the readable handler that was unregistered when the
@@ -921,14 +1005,23 @@ void evalGenericCommand(redisClient *c, int evalsha) {
         aeCreateFileEvent(server.el,c->fd,AE_READABLE,
                           readQueryFromClient,c);
     }
+    // lua_caller 置空
     server.lua_caller = NULL;
+
+    // 执行 lua 脚本用的是 lua 脚本执行专用的数据集。现在恢复原有的数据集
     selectDb(c,server.lua_client->db->id); /* set DB ID from Lua client */
+
+    // Garbage collection 垃圾回收
     lua_gc(lua,LUA_GCSTEP,1);
 
+    // 处理执行 lua 脚本的错误
     if (err) {
+        // 告知客户端
         addReplyErrorFormat(c,"Error running script (call to %s): %s\n",
             funcname, lua_tostring(lua,-1));
         lua_pop(lua,2); /* Consume the Lua reply and remove error handler. */
+
+    // 成功了
     } else {
         /* On success convert the Lua return value into Redis protocol, and
          * send it to * the client. */
@@ -936,6 +1029,7 @@ void evalGenericCommand(redisClient *c, int evalsha) {
         lua_pop(lua,1); /* Remove the error handler. */
     }
 
+    // 将 lua 脚本发布到主从复制上，并写入 AOF 文件
     /* EVALSHA should be propagated to Slave and AOF file as full EVAL, unless
      * we are sure that the script was already in the context of all the
      * attached slaves *and* the current AOF file if enabled.
@@ -951,10 +1045,19 @@ void evalGenericCommand(redisClient *c, int evalsha) {
             /* This script is not in our script cache, replicate it as
              * EVAL, then add it into the script cache, as from now on
              * slaves and AOF know about it. */
+
+            // 从 server.lua_scripts 获取 lua 脚本
+            // c->argv[1]->ptr 是 SHA1
             robj *script = dictFetchValue(server.lua_scripts,c->argv[1]->ptr);
 
+            // 添加到主从复制专用的脚本缓存中
             replicationScriptCacheAdd(c->argv[1]->ptr);
             redisAssertWithInfo(c,NULL,script != NULL);
+
+            // 重写命令
+            // 参数 1 为：EVAL
+            // 参数 2 为：lua_script
+            // 如此一来在执行 AOF 持久化和主从复制的时候，lua 脚本就能得到传播
             rewriteClientCommandArgument(c,0,
                 resetRefCount(createStringObject("EVAL",4)));
             rewriteClientCommandArgument(c,1,script);
@@ -967,6 +1070,8 @@ void evalCommand(redisClient *c) {
 }
 
 void evalShaCommand(redisClient *c) {
+    // sha1 是一种安全散列算法，当然还有 sha2
+    // sha1 长度大小必须为 40
     if (sdslen(c->argv[1]->ptr) != 40) {
         /* We know that a match is not possible if the provided SHA is
          * not the right length. So we return an error ASAP, this way
@@ -989,6 +1094,8 @@ int redis_math_random (lua_State *L) {
      some systems (SunOS!) `rand()' may return a value larger than RAND_MAX */
   lua_Number r = (lua_Number)(redisLrand48()%REDIS_LRAND48_MAX) /
                                 (lua_Number)REDIS_LRAND48_MAX;
+
+  // 根据不同命令参数的个数，返回随机值
   switch (lua_gettop(L)) {  /* check number of arguments */
     case 0: {  /* no arguments */
       lua_pushnumber(L, r);  /* Number between 0 and 1 */

@@ -939,19 +939,28 @@ struct redisServer {
     int notify_keyspace_events; /* Events to propagate via Pub/Sub. This is an
                                    xor of REDIS_NOTIFY... flags. */
 
+    // lua 脚本相关参数
     /* Scripting */
     lua_State *lua; /* The Lua interpreter. We use just one for all clients */
+    // 虚拟客户端，用以执行来自 lua 的 redis 命令
     redisClient *lua_client;   /* The "fake client" to query Redis from Lua */
     redisClient *lua_caller;   /* The client running EVAL right now, or NULL */
+    // lua 脚本哈希表
     dict *lua_scripts;         /* A dictionary of SHA1 -> Lua scripts */
+    // lua 脚本执行的超时时间
     long long lua_time_limit;  /* Script timeout in seconds */
+    // lua 脚本开始执行时间
     long long lua_time_start;  /* Start time of script */
+    // 在 lua 脚本中发生了写操作
     int lua_write_dirty;  /* True if a write command was called during the
                              execution of the current script. */
+    // 在 lua 脚本发生了未决的操作，譬如 RANDOMKEY 命令操作
     int lua_random_dirty; /* True if a random command was called during the
                              execution of the current script. */
+    // lua 脚本执行是否超时
     int lua_timedout;     /* True if we reached the time limit for script
                              execution. */
+    // 是否结束 lua 脚本
     int lua_kill;         /* Kill the script if true. */
 
     /* Assert & bug reporting */

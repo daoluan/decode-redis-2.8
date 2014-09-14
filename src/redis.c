@@ -1596,7 +1596,7 @@ void initServer() {
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
 
-    // 设置一些信号函数
+    // 设置一些信号的回调函数
     setupSignalHandlers();
 
     if (server.syslog_enabled) {
@@ -1756,8 +1756,11 @@ void initServer() {
     }
 
     replicationScriptCacheInit();
+    // lua 环境初始化
     scriptingInit();
+    // 初始化慢日志
     slowlogInit();
+    // 初始化后台任务线程
     bioInit();
 }
 
@@ -1938,7 +1941,7 @@ void call(redisClient *c, int flags) {
     // 脏数据标记，数据是否被修改
     dirty = server.dirty;
 
-    // 执行命令对应的函数
+    // 执行命令对应的处理函数
     c->cmd->proc(c);
 
     dirty = server.dirty-dirty;
@@ -1949,6 +1952,9 @@ void call(redisClient *c, int flags) {
     if (server.loading && c->flags & REDIS_LUA_CLIENT)
         flags &= ~(REDIS_CALL_SLOWLOG | REDIS_CALL_STATS);
 
+    // 如果是客户端 c 是 server.lua_client，且标记了 REDIS_FORCE_REPL 和
+    // REDIS_FORCE_AOF，那么请求执行 lua 脚本的真实客户端也会被标记。
+    // 如此 lua 脚本能在命令结束后被发送给从机和写入 AOF 文件
     /* If the caller is Lua, we want to force the EVAL caller to propagate
      * the script if the command flag or client flag are forcing the
      * propagation. */
@@ -2061,7 +2067,7 @@ int processCommand(redisClient *c) {
         return REDIS_OK;
     }
 
-    // 内存超额
+    // 内存超额，尝试释放内存
     /* Handle the maxmemory directive.
      *
      * First we try to free some memory if possible (if there are volatile
@@ -3080,6 +3086,12 @@ static void sigtermHandler(int sig) {
     server.shutdown_asap = 1;
 }
 
+
+// 1、注册 SIGTERM 信号的回调函数为 sigtermHandler()
+// sigtermHandler() 会记录写入进程 id 和收到信号的时间
+// 2、注册 SIGSEGV，SIGBUS，SIGFPE 和 SIGILL 信号的回调函数为 sigsegvHandler()
+// sigsegvHandler() 会记录包括调用栈，redis 服务器当前服务的客户端的信息，
+// CPU 寄存器信息等
 void setupSignalHandlers(void) {
     struct sigaction act;
 

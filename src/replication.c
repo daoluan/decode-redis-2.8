@@ -1836,7 +1836,7 @@ void replicationScriptCacheAdd(sds sha1) {
     int retval;
     sds key = sdsdup(sha1);
 
-    // 驱逐最旧的数据
+    // 驱逐旧的 SHA1
     /* Evict oldest. */
     if (listLength(server.repl_scriptcache_fifo) == server.repl_scriptcache_size)
     {
@@ -1848,7 +1848,7 @@ void replicationScriptCacheAdd(sds sha1) {
         listDelNode(server.repl_scriptcache_fifo,ln);
     }
 
-    // 添加
+    // 添加新的 SHA1
     /* Add current. */
     retval = dictAdd(server.repl_scriptcache_dict,key,NULL);
     listAddNodeHead(server.repl_scriptcache_fifo,key);
