@@ -48,9 +48,9 @@ void zlibc_free(void *ptr) {
 #define PREFIX_SIZE (0)
 #else
 #if defined(__sun) || defined(__sparc) || defined(__sparc__)
-#define PREFIX_SIZE (sizeof(long long))
+#define PREFIX_SIZE (sizeof(long long)) // 8B
 #else
-#define PREFIX_SIZE (sizeof(size_t))
+#define PREFIX_SIZE (sizeof(size_t))  // 32/64 4B/8B
 #endif
 #endif
 
@@ -67,9 +67,14 @@ void zlibc_free(void *ptr) {
 #define free(ptr) je_free(ptr)
 #endif
 
+// 原子操作。
+// 如果提供原子操作，则使用 GCC 提供的院子操作方法
 #ifdef HAVE_ATOMIC
+    // 原子加法
 #define update_zmalloc_stat_add(__n) __sync_add_and_fetch(&used_memory, (__n))
+    // 原子减法
 #define update_zmalloc_stat_sub(__n) __sync_sub_and_fetch(&used_memory, (__n))
+// 否则会使用普通的线程锁互斥来做加减
 #else
 #define update_zmalloc_stat_add(__n) do { \
     pthread_mutex_lock(&used_memory_mutex); \
@@ -85,17 +90,21 @@ void zlibc_free(void *ptr) {
 
 #endif
 
+// 更新已使用内存大小
 #define update_zmalloc_stat_alloc(__n) do { \
     size_t _n = (__n); \
-    // 去掉后面两位，是为了对齐
+    // 按 4字节向上取整
     if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \
+    // 如果设置了线程安全，调用专门线程安全函数
     if (zmalloc_thread_safe) { \
+        // 使用院子操作或者互斥锁，更新内存占用数值 used_memory
         update_zmalloc_stat_add(_n); \
     } else { \
         used_memory += _n; \
     } \
 } while(0)
 
+// 更新已使用内存大小
 #define update_zmalloc_stat_free(__n) do { \
     size_t _n = (__n); \
     if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \
@@ -106,29 +115,40 @@ void zlibc_free(void *ptr) {
     } \
 } while(0)
 
+// 全局变量，已经使用的内存大小
 static size_t used_memory = 0;
+// 线程安全与否
 static int zmalloc_thread_safe = 0;
+// 互斥锁。当为支持原子操作的时候，会用互斥锁作 used_memory 的加减
 pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// out of memory 出错处理
+// out of memory 出错处理。打印错误信息，并异常终止
 static void zmalloc_default_oom(size_t size) {
+    // 打印错误信息
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
     fflush(stderr);
+
+    // 异常终止
     abort();
 }
 
 static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 
 void *zmalloc(size_t size) {
+    // 预留了一小段空间
     void *ptr = malloc(size+PREFIX_SIZE);
 
+    // 内存溢出
     // error. out of memory.
     if (!ptr) zmalloc_oom_handler(size);
 
+// 更新已用内存大小。
+// jemalloc,tcmalloc 或者苹果系统支持实时获取指针所指内存大小
 #ifdef HAVE_MALLOC_SIZE
     update_zmalloc_stat_alloc(zmalloc_size(ptr));
     return ptr;
+// 其他情况使用 redis 自己的策略获知指针所指内存大小
 #else
     *((size_t*)ptr) = size;
     update_zmalloc_stat_alloc(size+PREFIX_SIZE);
@@ -136,6 +156,7 @@ void *zmalloc(size_t size) {
 #endif
 }
 
+// 分配已初始化的内存
 void *zcalloc(size_t size) {
     void *ptr = calloc(1, size+PREFIX_SIZE);
 
@@ -150,6 +171,7 @@ void *zcalloc(size_t size) {
 #endif
 }
 
+// 重新分配内存
 void *zrealloc(void *ptr, size_t size) {
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
@@ -179,6 +201,10 @@ void *zrealloc(void *ptr, size_t size) {
 #endif
 }
 
+// 实时获取指针所指内存大小
+// 说明：系统提供的内存分配不能实时给出指针所指内存的大小，而 jemalloc,
+// tcmalloc 或者苹果系统都支持实时获取的。
+// 如果上述都未支持，redis 会将指针所指内存大小放在预留的头部中
 /* Provide zmalloc_size() for systems where this function is not provided by
  * malloc itself, given that in that case we store a header with this
  * information as the first bytes of every allocation. */
@@ -186,6 +212,7 @@ void *zrealloc(void *ptr, size_t size) {
 size_t zmalloc_size(void *ptr) {
     void *realptr = (char*)ptr-PREFIX_SIZE;
     size_t size = *((size_t*)realptr);
+    // 按 4B向上取整
     /* Assume at least that all the allocations are padded at sizeof(long) by
      * the underlying allocator. */
     if (size&(sizeof(long)-1)) size += sizeof(long)-(size&(sizeof(long)-1));
@@ -193,6 +220,7 @@ size_t zmalloc_size(void *ptr) {
 }
 #endif
 
+// 释放内存，调整已使用内存大小
 void zfree(void *ptr) {
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
@@ -201,12 +229,11 @@ void zfree(void *ptr) {
 
     if (ptr == NULL) return;
 
-    // 调整已分配内存大小
+// 调整已分配内存大小
 #ifdef HAVE_MALLOC_SIZE
     update_zmalloc_stat_free(zmalloc_size(ptr));
     free(ptr);
 #else
-    // 内存真正开始的地方
     realptr = (char*)ptr-PREFIX_SIZE;
     oldsize = *((size_t*)realptr);
     update_zmalloc_stat_free(oldsize+PREFIX_SIZE);
@@ -214,6 +241,7 @@ void zfree(void *ptr) {
 #endif
 }
 
+// 内存拷贝
 char *zstrdup(const char *s) {
     size_t l = strlen(s)+1;
     char *p = zmalloc(l);
@@ -241,10 +269,12 @@ size_t zmalloc_used_memory(void) {
     return um;
 }
 
+// 开启线程安全模式
 void zmalloc_enable_thread_safeness(void) {
     zmalloc_thread_safe = 1;
 }
 
+// 设置内存溢出处理函数
 void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
     zmalloc_oom_handler = oom_handler;
 }
@@ -265,6 +295,8 @@ void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
 #include <sys/stat.h>
 #include <fcntl.h>
 
+// rss 是指进程所使用的驻留在 RAM 中的内存大小，这不包括被换出（swap out）的
+// 内存
 size_t zmalloc_get_rss(void) {
     int page = sysconf(_SC_PAGESIZE);
     size_t rss;
@@ -332,6 +364,12 @@ float zmalloc_get_fragmentation_ratio(void) {
     return (float)zmalloc_get_rss()/zmalloc_used_memory();
 }
 
+// 获取脏内存大小。这与父子进程、虚拟内存的主题相关，可以参看系统（如 linux）
+// 的写时拷贝技术。简单描述下，父进程调用 fork() 产生了子进程，此时此刻父子
+// 进程虽有各自的虚拟地址空间，但却是公共用同一个物理空间。只有当各段内容发生
+// 变化时，才会将父进程的内容复制给子进程，也就是说此时父子进程的物理空间是不
+// 一样的。写时拷贝（copy-on-write）技术能提高效率。
+// 在 RDB 持久化篇章中，有涉及这个函数的讲解。
 #if defined(HAVE_PROC_SMAPS)
 size_t zmalloc_get_private_dirty(void) {
     char line[1024];

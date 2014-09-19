@@ -83,7 +83,7 @@ void setGenericCommand(redisClient *c, int flags, robj *key, robj *val, robj *ex
     }
     setKey(c->db,key,val);
 
-    // 有新的数据，脏数据
+    // 新数据写入，脏数据
     server.dirty++;
 
     if (expire) setExpire(c->db,key,mstime()+milliseconds);

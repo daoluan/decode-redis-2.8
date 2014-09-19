@@ -481,7 +481,7 @@ typedef struct redisClient {
 
     redisDb *db;
 
-    // 数据库序号上下文
+    // 数据库序号上下文？？？
     int dictid;
 
     // 客户端名称，可以被设置
@@ -505,6 +505,7 @@ typedef struct redisClient {
 
     // 回复数据、
     list *reply;
+    // 统计回复列表中数据所占字节数
     unsigned long reply_bytes; /* Tot bytes of objects in reply list */
     int sentlen;            /* Amount of bytes already sent in the current
                                buffer or object being sent. */

@@ -74,7 +74,7 @@ redisClient *createClient(int fd) {
         }
     }
 
-    // 为客户端挑选存储的数据库。注意，redis 内部会有多个数据中心
+    // 为客户端挑选存储的数据库。注意，redis 内部会有多个数据集
     selectDb(c,0);
 
     c->fd = fd;
